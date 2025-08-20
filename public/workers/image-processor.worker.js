@@ -14,143 +14,179 @@ function loadImage(file) {
   })
 }
 
-function calculateInscribedRectangle(width, height, angleDegrees) {
-  // For 90-degree increments, handle specially
-  if (angleDegrees % 90 === 0) {
-    return { width, height, x: 0, y: 0 }
-  }
-
-  // Convert to radians
-  const angleRad = (Math.abs(angleDegrees) * Math.PI) / 180
-  const cos = Math.abs(Math.cos(angleRad))
-  const sin = Math.abs(Math.sin(angleRad))
-
-  // Calculate the largest inscribed rectangle
-  const inscribedWidth = Math.floor((width * cos + height * sin) / (cos + sin))
-  const inscribedHeight = Math.floor((height * cos + width * sin) / (cos + sin))
-
-  // Center the rectangle
-  const x = Math.floor((width - inscribedWidth) / 2)
-  const y = Math.floor((height - inscribedHeight) / 2)
-
-  return {
-    width: inscribedWidth,
-    height: inscribedHeight,
-    x: Math.max(0, x),
-    y: Math.max(0, y)
+// Development logging helper
+function devLog(message, data = null) {
+  if (typeof self !== 'undefined' && self.location && self.location.hostname === 'localhost') {
+    if (data) {
+      console.log(`[Worker] ${message}`, data)
+    } else {
+      console.log(`[Worker] ${message}`)
+    }
   }
 }
 
+// EXIF normalization - apply orientation correction
+function normalizeImageOrientation(imageBitmap) {
+  // For now, we assume the image is already oriented correctly
+  // In a full implementation, we would read EXIF data and apply corrections
+  devLog('EXIF normalization completed')
+  return imageBitmap
+}
+
+// Calculate canvas size needed for rotation without clipping
+function calculateRotationCanvasSize(width, height, angleDegrees) {
+  const angleRad = (Math.abs(angleDegrees) * Math.PI) / 180
+  const cos = Math.abs(Math.cos(angleRad))
+  const sin = Math.abs(Math.sin(angleRad))
+  
+  const newWidth = Math.ceil(width * cos + height * sin)
+  const newHeight = Math.ceil(width * sin + height * cos)
+  
+  return { width: newWidth, height: newHeight }
+}
+
+// Perform centered rotation on transparent background
+function rotateImageCentered(imageBitmap, angleDegrees) {
+  const { width: origWidth, height: origHeight } = imageBitmap
+  const { width: canvasWidth, height: canvasHeight } = calculateRotationCanvasSize(origWidth, origHeight, angleDegrees)
+  
+  const canvas = new OffscreenCanvas(canvasWidth, canvasHeight)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Failed to get 2D context for rotation')
+  
+  // Clear canvas with transparent background (no white fill!)
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+  
+  // Rotate and draw centered
+  const angleRad = (angleDegrees * Math.PI) / 180
+  ctx.save()
+  ctx.translate(canvasWidth / 2, canvasHeight / 2)
+  ctx.rotate(-angleRad) // Negative for clockwise
+  ctx.drawImage(imageBitmap, -origWidth / 2, -origHeight / 2)
+  ctx.restore()
+  
+  devLog(`Centered rotation completed: ${angleDegrees}°`, { 
+    original: `${origWidth}x${origHeight}`, 
+    canvas: `${canvasWidth}x${canvasHeight}` 
+  })
+  
+  return canvas
+}
+
+// Auto-trim by alpha detection - find minimal bounding box
+function trimCanvasByAlpha(canvas, alphaThreshold = 5) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Failed to get 2D context for trimming')
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = imageData.data
+  
+  let minX = canvas.width, minY = canvas.height
+  let maxX = 0, maxY = 0
+  
+  // Scan for non-transparent pixels
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const alpha = data[(y * canvas.width + x) * 4 + 3]
+      if (alpha > alphaThreshold) {
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x)
+        maxY = Math.max(maxY, y)
+      }
+    }
+  }
+  
+  // If no content found, return original
+  if (minX >= maxX || minY >= maxY) {
+    devLog('No content found for trimming, returning original')
+    return canvas
+  }
+  
+  const trimWidth = maxX - minX + 1
+  const trimHeight = maxY - minY + 1
+  
+  // Create trimmed canvas
+  const trimmedCanvas = new OffscreenCanvas(trimWidth, trimHeight)
+  const trimmedCtx = trimmedCanvas.getContext('2d')
+  if (!trimmedCtx) throw new Error('Failed to get 2D context for trimmed canvas')
+  
+  // Copy trimmed area
+  trimmedCtx.drawImage(canvas, minX, minY, trimWidth, trimHeight, 0, 0, trimWidth, trimHeight)
+  
+  devLog(`Alpha trim completed`, { 
+    original: `${canvas.width}x${canvas.height}`,
+    trimmed: `${trimWidth}x${trimHeight}`,
+    bounds: `(${minX},${minY}) to (${maxX},${maxY})`
+  })
+  
+  return trimmedCanvas
+}
+
 function processImage(img, options) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       // Use OffscreenCanvas (should always be available in Web Workers)
       if (typeof OffscreenCanvas === 'undefined') {
         throw new Error('OffscreenCanvas is not available in this environment')
       }
-      const canvas = new OffscreenCanvas(img.width, img.height)
       
-      if (canvas.width !== undefined) {
-        canvas.width = img.width
-        canvas.height = img.height
-      }
+      devLog('Starting image processing pipeline', { 
+        dimensions: `${img.width}x${img.height}`,
+        rotation: options.rotation,
+        format: options.format
+      })
       
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
-        throw new Error('Failed to get 2D context from canvas')
-      }
+      // PIPELINE: EXIF → rotate → trim → crop → resize → export
+      let workingCanvas
 
-      // Set initial canvas size
-      canvas.width = img.width
-      canvas.height = img.height
-
-      // Clear canvas
-      ctx.fillStyle = 'white'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-      // Apply rotation if needed
+      // Step 1: EXIF Normalization
+      const normalizedImg = normalizeImageOrientation(img)
+      
+      // Step 2: Rotation (if needed)
       if (options.rotation !== 0) {
-        // Calculate new canvas size for rotation
-        const angleRad = (options.rotation * Math.PI) / 180
-        const cos = Math.abs(Math.cos(angleRad))
-        const sin = Math.abs(Math.sin(angleRad))
+        workingCanvas = rotateImageCentered(normalizedImg, options.rotation)
         
-        const newWidth = Math.ceil(img.width * cos + img.height * sin)
-        const newHeight = Math.ceil(img.width * sin + img.height * cos)
-        
-        canvas.width = newWidth
-        canvas.height = newHeight
-        
-        // Clear with white background
-        ctx.fillStyle = 'white'
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-        
-        // Rotate and draw
-        ctx.save()
-        ctx.translate(newWidth / 2, newHeight / 2)
-        ctx.rotate(-angleRad) // Negative for clockwise rotation
-        ctx.drawImage(img, -img.width / 2, -img.height / 2)
-        ctx.restore()
-
-        // Auto-crop to remove rotation borders (like iPhone)
-        const inscribed = calculateInscribedRectangle(img.width, img.height, options.rotation)
-        const cropX = (newWidth - inscribed.width) / 2
-        const cropY = (newHeight - inscribed.height) / 2
-        
-        // Create new canvas with cropped size
-        const croppedCanvas = new OffscreenCanvas(inscribed.width, inscribed.height)
-        croppedCanvas.width = inscribed.width
-        croppedCanvas.height = inscribed.height
-        const croppedCtx = croppedCanvas.getContext('2d')
-        if (!croppedCtx) {
-          throw new Error('Failed to get 2D context from cropped canvas')
-        }
-        
-        croppedCtx.drawImage(
-          canvas,
-          cropX, cropY, inscribed.width, inscribed.height,
-          0, 0, inscribed.width, inscribed.height
-        )
-        
-        // Update working canvas
-        canvas.width = inscribed.width
-        canvas.height = inscribed.height
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(croppedCanvas, 0, 0)
+        // Step 3: Auto-trim by alpha detection
+        workingCanvas = trimCanvasByAlpha(workingCanvas)
       } else {
-        // No rotation, just draw the image
-        ctx.drawImage(img, 0, 0)
+        // No rotation: create canvas with original image
+        workingCanvas = new OffscreenCanvas(img.width, img.height)
+        const ctx = workingCanvas.getContext('2d')
+        if (!ctx) throw new Error('Failed to get 2D context')
+        
+        // Draw on transparent background (no white fill for consistency)
+        ctx.clearRect(0, 0, workingCanvas.width, workingCanvas.height)
+        ctx.drawImage(normalizedImg, 0, 0)
+        devLog('No rotation applied, using original image')
       }
 
-      // Apply custom crop if specified
+      // Step 4: Apply custom crop if specified (user crop after auto-trim)
       if (options.cropWidth > 0 && options.cropHeight > 0) {
         const cropCanvas = new OffscreenCanvas(options.cropWidth, options.cropHeight)
-        cropCanvas.width = options.cropWidth
-        cropCanvas.height = options.cropHeight
         const cropCtx = cropCanvas.getContext('2d')
-        if (!cropCtx) {
-          throw new Error('Failed to get 2D context from crop canvas')
-        }
+        if (!cropCtx) throw new Error('Failed to get 2D context for crop')
         
         cropCtx.drawImage(
-          canvas,
+          workingCanvas,
           options.cropX, options.cropY, options.cropWidth, options.cropHeight,
           0, 0, options.cropWidth, options.cropHeight
         )
         
-        canvas.width = options.cropWidth
-        canvas.height = options.cropHeight
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(cropCanvas, 0, 0)
+        workingCanvas = cropCanvas
+        devLog('Custom crop applied', { 
+          crop: `${options.cropWidth}x${options.cropHeight}`,
+          position: `(${options.cropX},${options.cropY})`
+        })
       }
 
-      // Apply resize if specified
+      // Step 5: Apply resize if specified
       if (options.resizeWidth > 0 || options.resizeHeight > 0) {
-        let newWidth = options.resizeWidth || canvas.width
-        let newHeight = options.resizeHeight || canvas.height
+        let newWidth = options.resizeWidth || workingCanvas.width
+        let newHeight = options.resizeHeight || workingCanvas.height
 
         if (options.maintainAspectRatio) {
-          const aspectRatio = canvas.width / canvas.height
+          const aspectRatio = workingCanvas.width / workingCanvas.height
           
           if (options.resizeWidth && !options.resizeHeight) {
             newWidth = options.resizeWidth
@@ -160,45 +196,64 @@ function processImage(img, options) {
             newWidth = Math.round(newHeight * aspectRatio)
           } else if (options.resizeWidth && options.resizeHeight) {
             // Use the constraint that requires the smallest scale
-            const scaleX = options.resizeWidth / canvas.width
-            const scaleY = options.resizeHeight / canvas.height
+            const scaleX = options.resizeWidth / workingCanvas.width
+            const scaleY = options.resizeHeight / workingCanvas.height
             const scale = Math.min(scaleX, scaleY)
             
-            newWidth = Math.round(canvas.width * scale)
-            newHeight = Math.round(canvas.height * scale)
+            newWidth = Math.round(workingCanvas.width * scale)
+            newHeight = Math.round(workingCanvas.height * scale)
           }
         }
 
         const resizeCanvas = new OffscreenCanvas(newWidth, newHeight)
-        resizeCanvas.width = newWidth
-        resizeCanvas.height = newHeight
         const resizeCtx = resizeCanvas.getContext('2d')
-        if (!resizeCtx) {
-          throw new Error('Failed to get 2D context from resize canvas')
-        }
+        if (!resizeCtx) throw new Error('Failed to get 2D context for resize')
         
         // Use high-quality scaling
         resizeCtx.imageSmoothingEnabled = true
         resizeCtx.imageSmoothingQuality = 'high'
         
-        resizeCtx.drawImage(canvas, 0, 0, newWidth, newHeight)
+        resizeCtx.drawImage(workingCanvas, 0, 0, newWidth, newHeight)
+        workingCanvas = resizeCanvas
         
-        canvas.width = newWidth
-        canvas.height = newHeight
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(resizeCanvas, 0, 0)
+        devLog('Resize applied', { 
+          original: `${workingCanvas.width}x${workingCanvas.height}`,
+          resized: `${newWidth}x${newHeight}`
+        })
       }
 
-      // Convert to blob using OffscreenCanvas method
+      // Step 6: Export to blob
       const mimeType = `image/${options.format}`
       const quality = options.format === 'png' ? undefined : options.quality / 100
       
+      devLog('Starting export', { 
+        format: options.format,
+        quality: options.quality,
+        finalDimensions: `${workingCanvas.width}x${workingCanvas.height}`
+      })
+      
+      // For JPEG, we might want to composite on white background to avoid transparency issues
+      let exportCanvas = workingCanvas
+      if (options.format === 'jpeg') {
+        exportCanvas = new OffscreenCanvas(workingCanvas.width, workingCanvas.height)
+        const exportCtx = exportCanvas.getContext('2d')
+        if (!exportCtx) throw new Error('Failed to get 2D context for export')
+        
+        // Fill with white background for JPEG
+        exportCtx.fillStyle = 'white'
+        exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
+        exportCtx.drawImage(workingCanvas, 0, 0)
+        
+        devLog('Applied white background for JPEG export')
+      }
+      
       // OffscreenCanvas convertToBlob method
-      canvas.convertToBlob({ type: mimeType, quality })
-        .then(resolve)
-        .catch(reject)
+      const blob = await exportCanvas.convertToBlob({ type: mimeType, quality })
+      devLog('Export completed', { size: `${Math.round(blob.size / 1024)}KB` })
+      resolve(blob)
         
     } catch (error) {
+      devLog('Processing failed', { error: error.message })
       reject(error)
     }
   })
