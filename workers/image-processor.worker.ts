@@ -230,14 +230,26 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
       const mimeType = `image/${options.format}`
       const quality = options.format === 'png' ? undefined : options.quality / 100
       
-      if (canvas.convertToBlob) {
+      // Type guard to distinguish OffscreenCanvas from HTMLCanvasElement
+      const isOffscreenCanvas = (canvas: HTMLCanvasElement | OffscreenCanvas): canvas is OffscreenCanvas => {
+        return 'convertToBlob' in canvas && typeof canvas.convertToBlob === 'function'
+      }
+      
+      if (isOffscreenCanvas(canvas)) {
         // OffscreenCanvas method
         canvas.convertToBlob({ type: mimeType, quality })
           .then(resolve)
           .catch(reject)
       } else {
-        // Regular canvas fallback
-        canvas.toBlob(resolve, mimeType, quality)
+        // HTMLCanvasElement fallback - wrap toBlob in Promise
+        const htmlCanvas = canvas as HTMLCanvasElement
+        htmlCanvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob)
+          } else {
+            reject(new Error('Failed to create blob from canvas'))
+          }
+        }, mimeType, quality)
       }
         
     } catch (error) {
