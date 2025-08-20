@@ -161,26 +161,65 @@ Next.js 14 + TypeScript + Tailwind CSS
 
 **Orden estricto para eliminar márgenes/fondos:**
 ```
-EXIF → Rotar (canvas alfa) → AutoCrop (alfa) → Crop lateral → Resize → Export
+EXIF → Rotar (canvas transparente) → autoCropByAlpha → Crop lateral → Resize → Export
 ```
 
-**Motivo técnico:** JPEG no tiene canal alfa. Si se exporta antes del autocrop, el navegador rellena automáticamente las áreas transparentes con blanco, creando los márgenes no deseados.
+**⚠️ CRÍTICO - Motivo técnico del autocrop antes de JPEG:**
 
-#### 🔧 Implementación Técnica
+JPEG **no tiene canal alfa** (transparencia). Si exportamos a JPEG antes del autocrop, el navegador automáticamente:
+1. 🔴 **Rellena áreas transparentes con BLANCO**
+2. 🔴 **Genera los bordes/marcos no deseados**  
+3. 🔴 **Hace imposible el recorte posterior**
 
-- **Canvas con alfa**: Todos los canvas usan fondo transparente (`clearRect()` sin `fillRect()`)
-- **Rotación expandida**: Canvas se expande para contener la imagen rotada completa
-- **AutoCrop por alfa**: Detecta rectángulo mínimo donde `alpha > threshold` (6 para anti-aliasing)
-- **Export al final**: Fondo blanco se aplica SOLO para JPEG en el momento final de export
-- **Fallback geométrico**: Si falla autocrop alfa, usa rectángulo inscrito máximo
+**✅ Solución:** Autocrop SIEMPRE debe aplicarse en canvas con alfa, ANTES de convertir a JPEG.
+
+#### 🔧 Implementación Técnica - autoCropByAlpha()
+
+- **Función unificada**: `autoCropByAlpha(canvas, threshold=0)` en `utils/image.ts`
+- **Detección precisa**: Escanea pixel por pixel buscando `alpha > threshold`
+- **Bounding box mínimo**: Calcula rectángulo exacto que contiene píxeles válidos
+- **Canvas recortado**: Crea nuevo canvas solo con la región útil
+- **Fallback seguro**: Si no encuentra contenido, devuelve canvas original (sin crashes)
+
+#### 🧮 Algoritmo de Recorte
+
+```typescript
+// 1. Escanear todos los píxeles
+for (let y = 0; y < height; y++) {
+  for (let x = 0; x < width; x++) {
+    const alpha = imageData[pixelIndex + 3]
+    if (alpha > threshold) {
+      // Actualizar bounding box
+      minX = Math.min(minX, x)
+      maxX = Math.max(maxX, x)
+      // ...
+    }
+  }
+}
+
+// 2. Crear canvas recortado
+const croppedCanvas = new OffscreenCanvas(width, height)
+croppedCtx.drawImage(original, minX, minY, width, height, 0, 0, width, height)
+```
 
 #### 🔍 Debug y QA
 
 **En desarrollo (localhost):**
-- Logs detallados del pipeline con tiempos
-- Detección automática de esquinas blancas en resultado final
-- Visualización de máscara alfa (rojo = áreas transparentes)
-- Verificación que no hay export temprano a JPEG
+- **Logs detallados** del pipeline con tiempos de ejecución
+- **Visualización de máscara alpha** (rojo = áreas transparentes) con `options.debugMode = true`
+- **Verificación automática** de que no hay export temprano a JPEG
+- **Información de bounding box** y porcentaje de reducción
+- **Fallback tracking** cuando el autocrop no puede proceder
+
+**Activar modo debug:**
+```javascript
+// En options del worker
+const options = {
+  rotation: 15,
+  format: 'png',
+  debugMode: true  // Solo en localhost
+}
+```
 
 **Compatibilidad:**
 - **Entrada**: JPG, PNG, WEBP

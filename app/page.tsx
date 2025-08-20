@@ -76,8 +76,8 @@ export default function HomePage() {
     setProcessingProgress({ current: 0, total: selectedFiles.length })
     setProcessedImages([])
 
-    // Create web worker for image processing
-    const worker = new Worker('/workers/image-processor.worker.js')
+    // Create web worker for image processing (ES Module)
+    const worker = new Worker('/workers/image-processor.worker.mjs', { type: 'module' })
     
     const results: ProcessedImage[] = []
 
