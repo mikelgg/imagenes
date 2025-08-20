@@ -1,29 +1,8 @@
-/// <reference lib="webworker" />
-
-declare const self: DedicatedWorkerGlobalScope;
-
-interface ProcessingOptions {
-  rotation: number
-  cropX: number
-  cropY: number
-  cropWidth: number
-  cropHeight: number
-  resizeWidth: number
-  resizeHeight: number
-  maintainAspectRatio: boolean
-  quality: number
-  format: 'jpeg' | 'png' | 'webp'
-  preserveExif: boolean
-  projectName: string
-}
-
-interface WorkerMessage {
-  file: File
-  options: ProcessingOptions
-}
+// Image Processor Web Worker
+// Handles image processing operations in a separate thread
 
 // Image processing functions
-function loadImage(file: File): Promise<HTMLImageElement> {
+function loadImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
@@ -42,12 +21,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
   })
 }
 
-function calculateInscribedRectangle(width: number, height: number, angleDegrees: number): {
-  width: number
-  height: number
-  x: number
-  y: number
-} {
+function calculateInscribedRectangle(width, height, angleDegrees) {
   // For 90-degree increments, handle specially
   if (angleDegrees % 90 === 0) {
     return { width, height, x: 0, y: 0 }
@@ -74,11 +48,20 @@ function calculateInscribedRectangle(width: number, height: number, angleDegrees
   }
 }
 
-function processImage(img: HTMLImageElement, options: ProcessingOptions): Promise<Blob> {
+function processImage(img, options) {
   return new Promise((resolve, reject) => {
     try {
-      const canvas = new OffscreenCanvas(img.width, img.height)
-      const ctx = canvas.getContext('2d')!
+      // Use OffscreenCanvas if available, otherwise fallback to regular canvas
+      const canvas = typeof OffscreenCanvas !== 'undefined' 
+        ? new OffscreenCanvas(img.width, img.height)
+        : document.createElement('canvas')
+      
+      if (canvas.width !== undefined) {
+        canvas.width = img.width
+        canvas.height = img.height
+      }
+      
+      const ctx = canvas.getContext('2d')
 
       // Set initial canvas size
       canvas.width = img.width
@@ -118,8 +101,12 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
         const cropY = (newHeight - inscribed.height) / 2
         
         // Create new canvas with cropped size
-        const croppedCanvas = new OffscreenCanvas(inscribed.width, inscribed.height)
-        const croppedCtx = croppedCanvas.getContext('2d')!
+        const croppedCanvas = typeof OffscreenCanvas !== 'undefined' 
+          ? new OffscreenCanvas(inscribed.width, inscribed.height)
+          : document.createElement('canvas')
+        croppedCanvas.width = inscribed.width
+        croppedCanvas.height = inscribed.height
+        const croppedCtx = croppedCanvas.getContext('2d')
         
         croppedCtx.drawImage(
           canvas,
@@ -139,8 +126,12 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
 
       // Apply custom crop if specified
       if (options.cropWidth > 0 && options.cropHeight > 0) {
-        const cropCanvas = new OffscreenCanvas(options.cropWidth, options.cropHeight)
-        const cropCtx = cropCanvas.getContext('2d')!
+        const cropCanvas = typeof OffscreenCanvas !== 'undefined' 
+          ? new OffscreenCanvas(options.cropWidth, options.cropHeight)
+          : document.createElement('canvas')
+        cropCanvas.width = options.cropWidth
+        cropCanvas.height = options.cropHeight
+        const cropCtx = cropCanvas.getContext('2d')
         
         cropCtx.drawImage(
           canvas,
@@ -179,8 +170,12 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
           }
         }
 
-        const resizeCanvas = new OffscreenCanvas(newWidth, newHeight)
-        const resizeCtx = resizeCanvas.getContext('2d')!
+        const resizeCanvas = typeof OffscreenCanvas !== 'undefined' 
+          ? new OffscreenCanvas(newWidth, newHeight)
+          : document.createElement('canvas')
+        resizeCanvas.width = newWidth
+        resizeCanvas.height = newHeight
+        const resizeCtx = resizeCanvas.getContext('2d')
         
         // Use high-quality scaling
         resizeCtx.imageSmoothingEnabled = true
@@ -198,9 +193,15 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
       const mimeType = `image/${options.format}`
       const quality = options.format === 'png' ? undefined : options.quality / 100
       
-      canvas.convertToBlob({ type: mimeType, quality })
-        .then(resolve)
-        .catch(reject)
+      if (canvas.convertToBlob) {
+        // OffscreenCanvas method
+        canvas.convertToBlob({ type: mimeType, quality })
+          .then(resolve)
+          .catch(reject)
+      } else {
+        // Regular canvas fallback
+        canvas.toBlob(resolve, mimeType, quality)
+      }
         
     } catch (error) {
       reject(error)
@@ -209,7 +210,7 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
 }
 
 // Worker message handler
-self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
+self.onmessage = async (e) => {
   try {
     const { file, options } = e.data
 
@@ -232,5 +233,3 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     })
   }
 }
-
-export {}
