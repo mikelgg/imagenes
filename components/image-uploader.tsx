@@ -33,16 +33,17 @@ export function ImageUploader({
     }
 
     // Validate file types and sizes
-    const { valid, invalid } = validateImageFiles(fileArray)
+    const { valid: initialValid, invalid } = validateImageFiles(fileArray)
     
     if (invalid.length > 0) {
       newErrors.push(`${invalid.length} files are not valid images (JPG, PNG, WEBP only)`)
     }
 
-    const oversizedFiles = valid.filter(file => file.size > maxFileSize)
+    const oversizedFiles = initialValid.filter(file => file.size > maxFileSize)
+    let valid = initialValid
     if (oversizedFiles.length > 0) {
       newErrors.push(`${oversizedFiles.length} files exceed ${formatFileSize(maxFileSize)} limit`)
-      valid = valid.filter(file => file.size <= maxFileSize)
+      valid = initialValid.filter(file => file.size <= maxFileSize)
     }
 
     if (newErrors.length > 0) {
