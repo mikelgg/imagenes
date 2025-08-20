@@ -86,7 +86,7 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
         canvas.height = img.height
       }
       
-      const ctx = canvas.getContext('2d')
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
       if (!ctx) {
         throw new Error('Failed to get 2D context from canvas')
       }
@@ -134,7 +134,7 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
           : document.createElement('canvas')
         croppedCanvas.width = inscribed.width
         croppedCanvas.height = inscribed.height
-        const croppedCtx = croppedCanvas.getContext('2d')
+        const croppedCtx = croppedCanvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
         if (!croppedCtx) {
           throw new Error('Failed to get 2D context from cropped canvas')
         }
@@ -162,7 +162,7 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
           : document.createElement('canvas')
         cropCanvas.width = options.cropWidth
         cropCanvas.height = options.cropHeight
-        const cropCtx = cropCanvas.getContext('2d')
+        const cropCtx = cropCanvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
         if (!cropCtx) {
           throw new Error('Failed to get 2D context from crop canvas')
         }
@@ -209,7 +209,7 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
           : document.createElement('canvas')
         resizeCanvas.width = newWidth
         resizeCanvas.height = newHeight
-        const resizeCtx = resizeCanvas.getContext('2d')
+        const resizeCtx = resizeCanvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
         if (!resizeCtx) {
           throw new Error('Failed to get 2D context from resize canvas')
         }
