@@ -3,21 +3,14 @@
 
 // Image processing functions
 function loadImage(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      resolve(img)
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Use createImageBitmap which is available in Web Workers
+      const imageBitmap = await createImageBitmap(file)
+      resolve(imageBitmap)
+    } catch (error) {
+      reject(new Error('Failed to load image: ' + error.message))
     }
-    
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('Failed to load image'))
-    }
-    
-    img.src = url
   })
 }
 
@@ -51,10 +44,11 @@ function calculateInscribedRectangle(width, height, angleDegrees) {
 function processImage(img, options) {
   return new Promise((resolve, reject) => {
     try {
-      // Use OffscreenCanvas if available, otherwise fallback to regular canvas
-      const canvas = typeof OffscreenCanvas !== 'undefined' 
-        ? new OffscreenCanvas(img.width, img.height)
-        : document.createElement('canvas')
+      // Use OffscreenCanvas (should always be available in Web Workers)
+      if (typeof OffscreenCanvas === 'undefined') {
+        throw new Error('OffscreenCanvas is not available in this environment')
+      }
+      const canvas = new OffscreenCanvas(img.width, img.height)
       
       if (canvas.width !== undefined) {
         canvas.width = img.width
@@ -104,9 +98,7 @@ function processImage(img, options) {
         const cropY = (newHeight - inscribed.height) / 2
         
         // Create new canvas with cropped size
-        const croppedCanvas = typeof OffscreenCanvas !== 'undefined' 
-          ? new OffscreenCanvas(inscribed.width, inscribed.height)
-          : document.createElement('canvas')
+        const croppedCanvas = new OffscreenCanvas(inscribed.width, inscribed.height)
         croppedCanvas.width = inscribed.width
         croppedCanvas.height = inscribed.height
         const croppedCtx = croppedCanvas.getContext('2d')
@@ -132,9 +124,7 @@ function processImage(img, options) {
 
       // Apply custom crop if specified
       if (options.cropWidth > 0 && options.cropHeight > 0) {
-        const cropCanvas = typeof OffscreenCanvas !== 'undefined' 
-          ? new OffscreenCanvas(options.cropWidth, options.cropHeight)
-          : document.createElement('canvas')
+        const cropCanvas = new OffscreenCanvas(options.cropWidth, options.cropHeight)
         cropCanvas.width = options.cropWidth
         cropCanvas.height = options.cropHeight
         const cropCtx = cropCanvas.getContext('2d')
@@ -179,9 +169,7 @@ function processImage(img, options) {
           }
         }
 
-        const resizeCanvas = typeof OffscreenCanvas !== 'undefined' 
-          ? new OffscreenCanvas(newWidth, newHeight)
-          : document.createElement('canvas')
+        const resizeCanvas = new OffscreenCanvas(newWidth, newHeight)
         resizeCanvas.width = newWidth
         resizeCanvas.height = newHeight
         const resizeCtx = resizeCanvas.getContext('2d')
@@ -201,30 +189,14 @@ function processImage(img, options) {
         ctx.drawImage(resizeCanvas, 0, 0)
       }
 
-      // Convert to blob
+      // Convert to blob using OffscreenCanvas method
       const mimeType = `image/${options.format}`
       const quality = options.format === 'png' ? undefined : options.quality / 100
       
-      // Type guard to distinguish OffscreenCanvas from HTMLCanvasElement
-      const isOffscreenCanvas = (canvas) => {
-        return 'convertToBlob' in canvas && typeof canvas.convertToBlob === 'function'
-      }
-      
-      if (isOffscreenCanvas(canvas)) {
-        // OffscreenCanvas method
-        canvas.convertToBlob({ type: mimeType, quality })
-          .then(resolve)
-          .catch(reject)
-      } else {
-        // HTMLCanvasElement fallback - wrap toBlob in Promise
-        canvas.toBlob((blob) => {
-          if (blob) {
-            resolve(blob)
-          } else {
-            reject(new Error('Failed to create blob from canvas'))
-          }
-        }, mimeType, quality)
-      }
+      // OffscreenCanvas convertToBlob method
+      canvas.convertToBlob({ type: mimeType, quality })
+        .then(resolve)
+        .catch(reject)
         
     } catch (error) {
       reject(error)
