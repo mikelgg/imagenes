@@ -99,24 +99,48 @@ function autoCropByAlpha(input, threshold = 0) {
 }
 
 /**
- * Calcula el bounding box mínimo de píxeles con alpha > threshold
+ * Calcula el bounding box mínimo de píxeles de contenido real
+ * Detecta tanto transparencia como bordes interpolados de rotación
  */
 function calculateAlphaBoundingBox(data, width, height, threshold) {
   let minX = width, minY = height, maxX = -1, maxY = -1
 
-  // Escanear todos los píxeles
+  // ALGORITMO MEJORADO: Detectar contenido real vs bordes de rotación
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const pixelIndex = (y * width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1] 
+      const b = data[pixelIndex + 2]
       const alpha = data[pixelIndex + 3]
       
-      // Píxel válido si alpha > threshold
-      if (alpha > threshold) {
-        minX = Math.min(minX, x)
-        minY = Math.min(minY, y)
-        maxX = Math.max(maxX, x)
-        maxY = Math.max(maxY, y)
-      }
+      // CRITERIOS MÚLTIPLES para detectar contenido real:
+      
+      // 1. Píxeles completamente transparentes = fondo
+      if (alpha <= threshold) continue
+      
+      // 2. Píxeles muy transparentes (interpolación) = probablemente fondo  
+      if (alpha < 30) continue
+      
+      // 3. Detectar píxeles de "fondo claro" típicos de rotación
+      // Estos son píxeles que aparecen por interpolación en los bordes
+      const isLightBackground = (
+        // Colores muy claros/blanquecinos
+        (r > 240 && g > 240 && b > 240) ||
+        // Colores beige/amarillentos típicos de fondos interpolados
+        (r > 230 && g > 220 && b > 180 && Math.abs(r - g) < 20) ||
+        // Grises muy claros
+        (Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && r > 235)
+      )
+      
+      // 4. Si el píxel tiene alpha medio y es color de fondo, probablemente es borde
+      if (alpha < 200 && isLightBackground) continue
+      
+      // 5. PÍXEL VÁLIDO: Alpha significativo y no es color de fondo típico
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
     }
   }
 
@@ -125,11 +149,147 @@ function calculateAlphaBoundingBox(data, width, height, threshold) {
     return null
   }
 
-  return {
+  // REFINAMIENTO: Contraer bordes si detectamos líneas de píxeles sospechosos
+  const result = {
     x: minX,
     y: minY,
     width: maxX - minX + 1,
     height: maxY - minY + 1
+  }
+  
+  // Contraer bordes que parecen ser artefactos de rotación
+  const refinedResult = refineBoundingBox(data, width, height, result)
+  
+  devLog('🔍 Auto-recorte detallado', {
+    original: `${width}x${height}`,
+    boundingBoxInicial: `(${result.x},${result.y}) ${result.width}x${result.height}`,
+    boundingBoxRefinado: `(${refinedResult.x},${refinedResult.y}) ${refinedResult.width}x${refinedResult.height}`,
+    reduccionInicial: `${Math.round((1 - (result.width * result.height) / (width * height)) * 100)}%`,
+    reduccionFinal: `${Math.round((1 - (refinedResult.width * refinedResult.height) / (width * height)) * 100)}%`
+  })
+  
+  return refinedResult
+}
+
+/**
+ * Refina el bounding box contrayendo bordes sospechosos
+ */
+function refineBoundingBox(data, width, height, bbox) {
+  let { x: minX, y: minY } = bbox
+  let maxX = bbox.x + bbox.width - 1
+  let maxY = bbox.y + bbox.height - 1
+  
+  // Contraer desde arriba
+  for (let y = minY; y < minY + 5 && y <= maxY; y++) {
+    let suspiciousPixels = 0
+    let totalPixels = 0
+    
+    for (let x = minX; x <= maxX; x++) {
+      const pixelIndex = (y * width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1]
+      const b = data[pixelIndex + 2]
+      const alpha = data[pixelIndex + 3]
+      
+      totalPixels++
+      
+      // Píxel sospechoso de ser borde de rotación
+      if (alpha < 100 || (r > 230 && g > 220 && b > 180)) {
+        suspiciousPixels++
+      }
+    }
+    
+    // Si >70% de los píxeles son sospechosos, contraer el borde
+    if (suspiciousPixels / totalPixels > 0.7) {
+      minY = y + 1
+    } else {
+      break
+    }
+  }
+  
+  // Contraer desde abajo
+  for (let y = maxY; y > maxY - 5 && y >= minY; y--) {
+    let suspiciousPixels = 0
+    let totalPixels = 0
+    
+    for (let x = minX; x <= maxX; x++) {
+      const pixelIndex = (y * width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1]
+      const b = data[pixelIndex + 2]
+      const alpha = data[pixelIndex + 3]
+      
+      totalPixels++
+      
+      if (alpha < 100 || (r > 230 && g > 220 && b > 180)) {
+        suspiciousPixels++
+      }
+    }
+    
+    if (suspiciousPixels / totalPixels > 0.7) {
+      maxY = y - 1
+    } else {
+      break
+    }
+  }
+  
+  // Contraer desde izquierda
+  for (let x = minX; x < minX + 5 && x <= maxX; x++) {
+    let suspiciousPixels = 0
+    let totalPixels = 0
+    
+    for (let y = minY; y <= maxY; y++) {
+      const pixelIndex = (y * width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1]
+      const b = data[pixelIndex + 2]
+      const alpha = data[pixelIndex + 3]
+      
+      totalPixels++
+      
+      if (alpha < 100 || (r > 230 && g > 220 && b > 180)) {
+        suspiciousPixels++
+      }
+    }
+    
+    if (suspiciousPixels / totalPixels > 0.7) {
+      minX = x + 1
+    } else {
+      break
+    }
+  }
+  
+  // Contraer desde derecha
+  for (let x = maxX; x > maxX - 5 && x >= minX; x--) {
+    let suspiciousPixels = 0
+    let totalPixels = 0
+    
+    for (let y = minY; y <= maxY; y++) {
+      const pixelIndex = (y * width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1]
+      const b = data[pixelIndex + 2]
+      const alpha = data[pixelIndex + 3]
+      
+      totalPixels++
+      
+      if (alpha < 100 || (r > 230 && g > 220 && b > 180)) {
+        suspiciousPixels++
+      }
+    }
+    
+    if (suspiciousPixels / totalPixels > 0.7) {
+      maxX = x - 1
+    } else {
+      break
+    }
+  }
+  
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX + 1),
+    height: Math.max(1, maxY - minY + 1)
   }
 }
 
@@ -264,14 +424,22 @@ async function processImage(img, options) {
       workingCanvas = createCanvasFromImageBitmap(img)
     }
 
-    // PASO 2: Auto-recorte por alpha (SIEMPRE aplicar)
+    // PASO 2: Auto-recorte mejorado (SIEMPRE aplicar)
     timer.start('autoCropByAlpha')
-    const autoCropResult = autoCropByAlpha(workingCanvas, 0) // threshold = 0 para máxima precisión
-    workingCanvas = autoCropResult.canvas || workingCanvas
+    const autoCropResult = autoCropByAlpha(workingCanvas, 0) // threshold = 0, pero usa detección mejorada
+    
+    if (autoCropResult.success) {
+      workingCanvas = autoCropResult.canvas || workingCanvas
+      devLog('✅ Auto-recorte exitoso', {
+        ...autoCropResult.debugInfo,
+        boundingBox: autoCropResult.boundingBox
+      })
+    } else {
+      devLog('⚠️ Auto-recorte falló, usando imagen original', autoCropResult.debugInfo)
+    }
+    
     debugInfo.autoCrop = autoCropResult.debugInfo
     timer.end('autoCropByAlpha')
-    
-    devLog('✅ Auto-recorte aplicado', autoCropResult.debugInfo)
     
     // Modo debug: crear visualización de máscara alpha
     if (DEBUG_MODE && options.debugMode) {

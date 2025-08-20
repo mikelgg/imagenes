@@ -114,7 +114,8 @@ export function autoCropByAlpha(
 }
 
 /**
- * Calcula el bounding box mínimo de píxeles con alpha > threshold
+ * Calcula el bounding box mínimo de píxeles de contenido real
+ * Detecta tanto transparencia como bordes interpolados de rotación
  */
 function calculateAlphaBoundingBox(
   data: Uint8ClampedArray, 
@@ -124,19 +125,42 @@ function calculateAlphaBoundingBox(
 ): BoundingBox | null {
   let minX = width, minY = height, maxX = -1, maxY = -1
 
-  // Escanear todos los píxeles
+  // ALGORITMO MEJORADO: Detectar contenido real vs bordes de rotación
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const pixelIndex = (y * width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1] 
+      const b = data[pixelIndex + 2]
       const alpha = data[pixelIndex + 3]
       
-      // Píxel válido si alpha > threshold
-      if (alpha > threshold) {
-        minX = Math.min(minX, x)
-        minY = Math.min(minY, y)
-        maxX = Math.max(maxX, x)
-        maxY = Math.max(maxY, y)
-      }
+      // CRITERIOS MÚLTIPLES para detectar contenido real:
+      
+      // 1. Píxeles completamente transparentes = fondo
+      if (alpha <= threshold) continue
+      
+      // 2. Píxeles muy transparentes (interpolación) = probablemente fondo  
+      if (alpha < 30) continue
+      
+      // 3. Detectar píxeles de "fondo claro" típicos de rotación
+      // Estos son píxeles que aparecen por interpolación en los bordes
+      const isLightBackground = (
+        // Colores muy claros/blanquecinos
+        (r > 240 && g > 240 && b > 240) ||
+        // Colores beige/amarillentos típicos de fondos interpolados
+        (r > 230 && g > 220 && b > 180 && Math.abs(r - g) < 20) ||
+        // Grises muy claros
+        (Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && r > 235)
+      )
+      
+      // 4. Si el píxel tiene alpha medio y es color de fondo, probablemente es borde
+      if (alpha < 200 && isLightBackground) continue
+      
+      // 5. PÍXEL VÁLIDO: Alpha significativo y no es color de fondo típico
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
     }
   }
 
