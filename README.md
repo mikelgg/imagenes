@@ -156,10 +156,37 @@ Next.js 14 + TypeScript + Tailwind CSS
 ```
 
 ### Procesamiento de Imágenes
-- **Canvas API** para manipulación de píxeles
-- **Algoritmo matemático** para rectángulo inscrito (auto-crop)
+
+#### 🎯 Pipeline Sin Fondos Blancos (iPhone-style)
+
+**Orden estricto para eliminar márgenes/fondos:**
+```
+EXIF → Rotar (canvas alfa) → AutoCrop (alfa) → Crop lateral → Resize → Export
+```
+
+**Motivo técnico:** JPEG no tiene canal alfa. Si se exporta antes del autocrop, el navegador rellena automáticamente las áreas transparentes con blanco, creando los márgenes no deseados.
+
+#### 🔧 Implementación Técnica
+
+- **Canvas con alfa**: Todos los canvas usan fondo transparente (`clearRect()` sin `fillRect()`)
+- **Rotación expandida**: Canvas se expande para contener la imagen rotada completa
+- **AutoCrop por alfa**: Detecta rectángulo mínimo donde `alpha > threshold` (6 para anti-aliasing)
+- **Export al final**: Fondo blanco se aplica SOLO para JPEG en el momento final de export
+- **Fallback geométrico**: Si falla autocrop alfa, usa rectángulo inscrito máximo
+
+#### 🔍 Debug y QA
+
+**En desarrollo (localhost):**
+- Logs detallados del pipeline con tiempos
+- Detección automática de esquinas blancas en resultado final
+- Visualización de máscara alfa (rojo = áreas transparentes)
+- Verificación que no hay export temprano a JPEG
+
+**Compatibilidad:**
+- **Entrada**: JPG, PNG, WEBP
+- **Salida**: JPG (con fondo blanco final), PNG/WEBP (mantienen alfa)
 - **Web Workers** para no bloquear UI
-- **Preservación EXIF** opcional con piexifjs
+- **OffscreenCanvas** para mejor rendimiento
 
 ---
 

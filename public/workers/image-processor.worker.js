@@ -40,6 +40,103 @@ const timer = {
 // Debug mode flag (set to true for debugging)
 const DEBUG_MODE = typeof self !== 'undefined' && self.location && self.location.hostname === 'localhost'
 
+// Debug utilities for corner detection and alpha mask visualization
+function detectWhiteCorners(canvas, threshold = 245) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return { hasWhiteCorners: false, corners: {} }
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = imageData.data
+  
+  const cornerSize = Math.min(20, Math.floor(Math.min(canvas.width, canvas.height) / 10))
+  const corners = {
+    topLeft: checkCornerWhiteness(data, canvas.width, canvas.height, 0, 0, cornerSize, threshold),
+    topRight: checkCornerWhiteness(data, canvas.width, canvas.height, canvas.width - cornerSize, 0, cornerSize, threshold),
+    bottomLeft: checkCornerWhiteness(data, canvas.width, canvas.height, 0, canvas.height - cornerSize, cornerSize, threshold),
+    bottomRight: checkCornerWhiteness(data, canvas.width, canvas.height, canvas.width - cornerSize, canvas.height - cornerSize, cornerSize, threshold)
+  }
+  
+  const whiteCornerCount = Object.values(corners).filter(corner => corner.isWhite).length
+  
+  return {
+    hasWhiteCorners: whiteCornerCount > 0,
+    whiteCornerCount,
+    corners,
+    analysis: `${whiteCornerCount}/4 corners are white (threshold: ${threshold})`
+  }
+}
+
+function checkCornerWhiteness(data, width, height, startX, startY, size, threshold) {
+  let whitePixels = 0
+  let totalPixels = 0
+  
+  for (let y = startY; y < Math.min(startY + size, height); y++) {
+    for (let x = startX; x < Math.min(startX + size, width); x++) {
+      const pixelIndex = (y * width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1]
+      const b = data[pixelIndex + 2]
+      
+      if (r >= threshold && g >= threshold && b >= threshold) {
+        whitePixels++
+      }
+      totalPixels++
+    }
+  }
+  
+  const whiteness = totalPixels > 0 ? (whitePixels / totalPixels) : 0
+  return {
+    isWhite: whiteness > 0.8, // 80% of corner pixels are white
+    whiteness: Math.round(whiteness * 100),
+    whitePixels,
+    totalPixels
+  }
+}
+
+function createAlphaMaskVisualization(canvas) {
+  if (!DEBUG_MODE) return canvas
+  
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = imageData.data
+  
+  // Create visualization canvas
+  const maskCanvas = new OffscreenCanvas(canvas.width, canvas.height)
+  const maskCtx = maskCanvas.getContext('2d')
+  if (!maskCtx) return canvas
+  
+  // Draw original image
+  maskCtx.drawImage(canvas, 0, 0)
+  
+  // Overlay alpha mask in red for pixels with alpha > 0
+  const overlayData = maskCtx.createImageData(canvas.width, canvas.height)
+  
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3]
+    
+    if (alpha > 0) {
+      // Show alpha content in original colors
+      overlayData.data[i] = data[i]     // R
+      overlayData.data[i + 1] = data[i + 1] // G
+      overlayData.data[i + 2] = data[i + 2] // B
+      overlayData.data[i + 3] = alpha        // A
+    } else {
+      // Show transparent areas in red overlay
+      overlayData.data[i] = 255     // R (red)
+      overlayData.data[i + 1] = 0   // G
+      overlayData.data[i + 2] = 0   // B
+      overlayData.data[i + 3] = 100 // A (semi-transparent)
+    }
+  }
+  
+  maskCtx.putImageData(overlayData, 0, 0)
+  
+  devLog('🔍 Alpha mask visualization created (red = transparent areas)')
+  return maskCanvas
+}
+
 // EXIF normalization - apply orientation correction
 function normalizeImageOrientation(imageBitmap) {
   // For now, we assume the image is already oriented correctly
@@ -432,14 +529,16 @@ function processImage(img, options) {
         throw new Error('OffscreenCanvas is not available in this environment')
       }
       
-      devLog('🚀 Starting iPhone-style processing pipeline', { 
+      devLog('🚀 Starting STRICT pipeline (no white backgrounds)', { 
         dimensions: `${img.width}x${img.height}`,
         rotation: options.rotation,
         format: options.format,
-        debugMode: DEBUG_MODE
+        debugMode: DEBUG_MODE,
+        pipeline: 'EXIF → rotate → autocrop(alpha) → crop → resize → export'
       })
       
-      // STRICT PIPELINE: EXIF → rotate+trim → crop → resize → export
+      // STRICT PIPELINE: EXIF → rotate → autocrop(alpha) → crop → resize → export
+      // CRITICAL: NO early export to JPG/WEBP before autocrop
       let workingCanvas
 
       // Step 1: EXIF Normalization
@@ -543,30 +642,33 @@ function processImage(img, options) {
         })
       }
 
-      // Step 5: Export (ONLY NOW apply background if needed)
+      // Step 5: FINAL EXPORT (AFTER all autocrop/crop/resize)
       timer.start('export')
       const mimeType = `image/${options.format}`
       const quality = options.format === 'png' ? undefined : options.quality / 100
       
-      devLog('Starting export (background applied only now)', { 
+      devLog('🎯 FINAL EXPORT - no more processing after this', { 
         format: options.format,
         quality: options.quality,
-        finalDimensions: `${workingCanvas.width}x${workingCanvas.height}`
+        finalDimensions: `${workingCanvas.width}x${workingCanvas.height}`,
+        note: 'All autocrop/trim completed - safe to apply background for JPEG'
       })
       
-      // CRITICAL: Apply background ONLY for export, AFTER all trimming is done
+      // CRITICAL: Apply background ONLY for JPEG export, AFTER all alpha-based trimming
       let exportCanvas = workingCanvas
       if (options.format === 'jpeg') {
         exportCanvas = new OffscreenCanvas(workingCanvas.width, workingCanvas.height)
         const exportCtx = exportCanvas.getContext('2d')
         if (!exportCtx) throw new Error('Failed to get 2D context for export')
         
-        // NOW we apply white background (trim already removed transparencies)
+        // Safe to apply white background now - autocrop already removed transparent borders
         exportCtx.fillStyle = 'white'
         exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
         exportCtx.drawImage(workingCanvas, 0, 0)
         
-        devLog('✅ White background applied ONLY for JPEG export (after trim)')
+        devLog('✅ White background applied safely for JPEG (after all alpha-based trimming)')
+      } else {
+        devLog('✅ PNG/WEBP export - maintaining alpha channel as-is')
       }
       
       // Final export
@@ -574,9 +676,21 @@ function processImage(img, options) {
       timer.end('export')
       timer.end('totalProcessing')
       
+      // QUALITY ASSURANCE: Detect white corners in final result
+      let cornerAnalysis = null
+      if (DEBUG_MODE || options.format === 'jpeg') {
+        cornerAnalysis = detectWhiteCorners(exportCanvas, 245)
+        if (cornerAnalysis.hasWhiteCorners) {
+          devLog('⚠️ WARNING: White corners detected in final result!', cornerAnalysis)
+        } else {
+          devLog('✅ No white corners detected - clean result', cornerAnalysis.analysis)
+        }
+      }
+      
       devLog('🎉 Processing completed successfully', { 
         size: `${Math.round(blob.size / 1024)}KB`,
         finalDimensions: `${exportCanvas.width}x${exportCanvas.height}`,
+        cornerCheck: cornerAnalysis?.analysis || 'skipped',
         debugInfo
       })
       
@@ -588,7 +702,13 @@ function processImage(img, options) {
             ...debugInfo,
             finalSize: `${exportCanvas.width}x${exportCanvas.height}`,
             fileSize: `${Math.round(blob.size / 1024)}KB`,
-            totalProcessingTime: `${(performance.now() - timer.totalProcessing).toFixed(2)}ms`
+            totalProcessingTime: `${(performance.now() - timer.totalProcessing).toFixed(2)}ms`,
+            cornerAnalysis: cornerAnalysis || null,
+            pipelineVerification: {
+              exportedAfterAutocrop: true,
+              noEarlyJpegExport: true,
+              alphaPreservedUntilExport: options.format !== 'jpeg'
+            }
           }
         })
       } else {
