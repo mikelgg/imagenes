@@ -27,8 +27,8 @@
     "uuid": "^9.0.1",
     "@types/uuid": "^9.0.7",
     "jszip": "^3.10.1",
-    "@types/jszip": "^3.4.1",
-    "piexifjs": "^1.0.6",
+
+
     "lucide-react": "^0.294.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
