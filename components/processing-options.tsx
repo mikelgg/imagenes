@@ -72,8 +72,9 @@ export function ProcessingOptions({ options, onChange, disabled }: ProcessingOpt
           ))}
         </div>
         <div className="space-y-2">
-          <Label>Custom Angle: {options.rotation}°</Label>
+          <Label htmlFor="rotation-slider">Custom Angle: {options.rotation}°</Label>
           <Slider
+            id="rotation-slider"
             value={[options.rotation]}
             onValueChange={([value]) => onChange({ rotation: value })}
             max={360}
@@ -197,7 +198,7 @@ export function ProcessingOptions({ options, onChange, disabled }: ProcessingOpt
               onValueChange={(value: 'jpeg' | 'png' | 'webp') => onChange({ format: value })}
               disabled={disabled}
             >
-              <SelectTrigger>
+              <SelectTrigger id="format">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -209,8 +210,9 @@ export function ProcessingOptions({ options, onChange, disabled }: ProcessingOpt
           </div>
           
           <div>
-            <Label>Quality: {options.quality}%</Label>
+            <Label htmlFor="quality-slider">Quality: {options.quality}%</Label>
             <Slider
+              id="quality-slider"
               value={[options.quality]}
               onValueChange={([value]) => onChange({ quality: value })}
               max={100}

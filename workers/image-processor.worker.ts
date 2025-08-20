@@ -1,8 +1,33 @@
 // Image Processor Web Worker
 // Handles image processing operations in a separate thread
 
+// Types and interfaces
+interface ProcessingOptions {
+  rotation: number
+  cropX: number
+  cropY: number
+  cropWidth: number
+  cropHeight: number
+  resizeWidth: number
+  resizeHeight: number
+  maintainAspectRatio: boolean
+  format: 'jpeg' | 'png' | 'webp'
+  quality: number
+}
+
+interface WorkerMessage {
+  file: File
+  options: ProcessingOptions
+}
+
+interface WorkerResponse {
+  success: boolean
+  result?: { blob: Blob }
+  error?: string
+}
+
 // Image processing functions
-function loadImage(file) {
+function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
@@ -21,7 +46,7 @@ function loadImage(file) {
   })
 }
 
-function calculateInscribedRectangle(width, height, angleDegrees) {
+function calculateInscribedRectangle(width: number, height: number, angleDegrees: number): { width: number; height: number; x: number; y: number } {
   // For 90-degree increments, handle specially
   if (angleDegrees % 90 === 0) {
     return { width, height, x: 0, y: 0 }
@@ -48,7 +73,7 @@ function calculateInscribedRectangle(width, height, angleDegrees) {
   }
 }
 
-function processImage(img, options) {
+function processImage(img: HTMLImageElement, options: ProcessingOptions): Promise<Blob> {
   return new Promise((resolve, reject) => {
     try {
       // Use OffscreenCanvas if available, otherwise fallback to regular canvas
@@ -210,7 +235,7 @@ function processImage(img, options) {
 }
 
 // Worker message handler
-self.onmessage = async (e) => {
+self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   try {
     const { file, options } = e.data
 
@@ -221,15 +246,17 @@ self.onmessage = async (e) => {
     const blob = await processImage(img, options)
     
     // Send result back
-    self.postMessage({
+    const response: WorkerResponse = {
       success: true,
       result: { blob }
-    })
+    }
+    self.postMessage(response)
     
   } catch (error) {
-    self.postMessage({
+    const errorResponse: WorkerResponse = {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
-    })
+    }
+    self.postMessage(errorResponse)
   }
 }
