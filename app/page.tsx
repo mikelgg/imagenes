@@ -77,7 +77,7 @@ export default function HomePage() {
     setProcessedImages([])
 
     // Create web worker for image processing
-    const worker = new Worker(new URL('/workers/image-processor.worker.js', window.location.origin))
+    const worker = new Worker('/workers/image-processor.worker.js')
     
     const results: ProcessedImage[] = []
 
