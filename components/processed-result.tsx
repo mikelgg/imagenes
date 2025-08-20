@@ -166,7 +166,8 @@ export function ProcessedResult({ processedImages, projectName }: ProcessedResul
       {/* Tips */}
       <div className="text-sm text-muted-foreground space-y-1">
         <div className="font-medium">💡 Tips:</div>
-        <div>• Images are processed with your selected rotation and quality settings</div>
+        <div>• Images are processed with rotation, auto-cropping, and quality settings</div>
+        <div>• Auto-cropping removes transparent/white borders from rotated images</div>
         <div>• ZIP file contains all successfully processed images</div>
         <div>• You can download individual images using the download buttons</div>
         {failedImages.length > 0 && (

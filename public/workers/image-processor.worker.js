@@ -203,16 +203,15 @@ function rotateAndTrimImage(imageBitmap, angleDegrees) {
     margin: `${margin}px`
   })
   
-  // Enhanced trim: first try aggressive alpha detection, then geometric fallback
-  timer.start('smartTrim')
-  const trimResult = trimByAlphaContent(rotationCanvas, normalizedAngle, 3) // Lower threshold for more aggressive trimming
+  // Auto-recorte ÚNICO y PRECISO: solo el bounding box mínimo con alpha > 0
+  timer.start('autoCrop')
+  const trimResult = trimByAlphaContent(rotationCanvas, normalizedAngle, 0) // threshold = 0 para máxima precisión
+  timer.end('autoCrop')
   
-  // Apply additional border cleanup if needed
-  const finalResult = applyAggressiveBorderCleanup(trimResult.canvas, normalizedAngle)
-  timer.end('smartTrim')
+  devLog(`🎯 Auto-recorte completado: ${normalizedAngle}° rotado y recortado al bounding box mínimo`)
   
-  // Return both canvas and debug info
-  return { canvas: finalResult, debugInfo: trimResult.debugInfo }
+  // Retornar directamente el resultado del auto-recorte - no más procesamiento
+  return { canvas: trimResult.canvas, debugInfo: trimResult.debugInfo }
 }
 
 // Apply aggressive border cleanup to eliminate any remaining white/transparent borders
@@ -329,34 +328,31 @@ function calculateMaxInscribedRectangle(originalWidth, originalHeight, angleDegr
   }
 }
 
-// Robust trim with alpha detection primary + geometric fallback
-function trimByAlphaContent(canvas, angle = 0, alphaThreshold = 6) {
+// Auto-recorte preciso basado en bounding box de píxeles con alpha > 0
+function trimByAlphaContent(canvas, angle = 0, alphaThreshold = 0) {
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Failed to get 2D context for robust trim')
+  if (!ctx) throw new Error('Failed to get 2D context for auto-crop')
   
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const data = imageData.data
   
-  // Step 1: Analyze edges for alpha content
-  const edgeAnalysis = analyzeEdgeAlpha(data, canvas.width, canvas.height, alphaThreshold)
+  devLog('🎯 Iniciando auto-recorte al bounding box mínimo con alpha > 0')
   
-  devLog('🔍 Edge alpha analysis', edgeAnalysis)
-  
-  // Step 2: Try alpha-based trim first
+  // SIEMPRE usar el método de alpha trim - es lo que requiere el usuario
   const alphaTrimResult = tryAlphaTrim(data, canvas.width, canvas.height, alphaThreshold)
   
   let trimResult
   let trimMethod = 'alpha'
   
   if (alphaTrimResult.success) {
-    // Alpha trim successful
+    // Alpha trim successful - Este es el comportamiento deseado
     trimResult = alphaTrimResult
-    devLog('✅ Alpha trim successful', { 
+    devLog('✅ Auto-recorte exitoso al bounding box mínimo', { 
       bounds: alphaTrimResult.bounds,
       reductionPercent: Math.round((1 - (alphaTrimResult.bounds.width * alphaTrimResult.bounds.height) / (canvas.width * canvas.height)) * 100)
     })
   } else {
-    // Fallback to geometric trim
+    // Solo usar fallback geométrico si realmente no hay contenido (caso muy raro)
     trimMethod = 'geometric'
     const { width: origWidth, height: origHeight } = canvas
     const maxRect = calculateMaxInscribedRectangle(origWidth, origHeight, angle)
@@ -371,7 +367,7 @@ function trimByAlphaContent(canvas, angle = 0, alphaThreshold = 6) {
       success: true
     }
     
-    devLog('⚠️ Geometric fallback applied', { 
+    devLog('⚠️ Fallback geométrico aplicado (no se encontró contenido con alpha > 0)', { 
       reason: 'Alpha trim failed',
       maxInscribed: maxRect,
       centerCrop: trimResult.bounds
@@ -472,26 +468,19 @@ function analyzeEdgeAlpha(data, width, height, threshold) {
   }
 }
 
-// Try alpha-based trim with enhanced detection for white/transparent borders
-function tryAlphaTrim(data, width, height, threshold) {
+// Precise alpha-based trim that finds exact bounding box of non-transparent pixels
+function tryAlphaTrim(data, width, height, threshold = 0) {
   let minX = width, minY = height, maxX = -1, maxY = -1
   
-  // Enhanced scanning: look for both alpha content AND non-white pixels
+  // PRECISIÓN MÁXIMA: Solo buscamos píxeles con alpha > 0 (no completamente transparentes)
+  // Este es el criterio exacto requerido por el usuario
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const pixelIndex = (y * width + x) * 4
-      const r = data[pixelIndex]
-      const g = data[pixelIndex + 1]
-      const b = data[pixelIndex + 2]
       const alpha = data[pixelIndex + 3]
       
-      // Consider a pixel "content" if:
-      // 1. It has significant alpha (not transparent)
-      // 2. It's not white/near-white (to catch white borders)
-      const hasAlpha = alpha > threshold
-      const isNotWhite = (r < 250 || g < 250 || b < 250) // More aggressive white detection
-      
-      if (hasAlpha && (alpha < 255 || isNotWhite)) {
+      // Criterio simple y preciso: alpha > 0 = píxel válido
+      if (alpha > threshold) {
         minX = Math.min(minX, x)
         minY = Math.min(minY, y)
         maxX = Math.max(maxX, x)
@@ -507,11 +496,15 @@ function tryAlphaTrim(data, width, height, threshold) {
   const trimWidth = maxX - minX + 1
   const trimHeight = maxY - minY + 1
   
-  // More lenient reduction threshold - even small improvements are worth it
+  // Aplicar siempre el recorte si encontramos un bounding box válido
+  // No importa qué tan pequeña sea la reducción - eliminar bordes transparentes es valioso
   const reduction = 1 - (trimWidth * trimHeight) / (width * height)
-  if (reduction < 0.005) { // Reduced from 1% to 0.5%
-    return { success: false, reason: 'Insufficient reduction' }
-  }
+  
+  devLog('🎯 Bounding box de píxeles con alpha > 0 calculado', {
+    boundingBox: `(${minX},${minY}) ${trimWidth}x${trimHeight}`,
+    originalSize: `${width}x${height}`,
+    reduction: `${Math.round(reduction * 100)}%`
+  })
   
   return {
     success: true,
@@ -554,26 +547,25 @@ function processImage(img, options) {
         workingCanvas = trimResult.canvas
         debugInfo = trimResult.debugInfo
       } else {
-        // No rotation: use original image on transparent canvas
+        // No rotation: transferir imagen a canvas transparente y aplicar auto-recorte
         timer.start('noRotationSetup')
-        workingCanvas = new OffscreenCanvas(img.width, img.height)
-        const ctx = workingCanvas.getContext('2d')
-        if (!ctx) throw new Error('Failed to get 2D context')
+        const tempCanvas = new OffscreenCanvas(img.width, img.height)
+        const tempCtx = tempCanvas.getContext('2d')
+        if (!tempCtx) throw new Error('Failed to get 2D context')
         
         // CRITICAL: Keep transparent background
-        ctx.clearRect(0, 0, workingCanvas.width, workingCanvas.height)
-        ctx.drawImage(normalizedImg, 0, 0)
+        tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height)
+        tempCtx.drawImage(normalizedImg, 0, 0)
         timer.end('noRotationSetup')
         
-        debugInfo = {
-          angle: 0,
-          trimMethod: 'none',
-          trimRect: { x: 0, y: 0, w: img.width, h: img.height },
-          edgesAlphaCounts: { top: 0, bottom: 0, left: 0, right: 0 },
-          finalEdgesAlphaCounts: { top: 0, bottom: 0, left: 0, right: 0 }
-        }
+        // Aplicar auto-recorte incluso sin rotación para eliminar bordes transparentes
+        timer.start('autoCropNoRotation')
+        const trimResult = trimByAlphaContent(tempCanvas, 0, 0)
+        workingCanvas = trimResult.canvas
+        debugInfo = trimResult.debugInfo
+        timer.end('autoCropNoRotation')
         
-        devLog('No rotation applied, using original image on transparent canvas')
+        devLog('✅ Sin rotación: imagen transferida y auto-recortada para eliminar bordes transparentes')
       }
 
       // Step 3: Apply user crop if specified (after auto-trim)

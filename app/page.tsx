@@ -190,8 +190,8 @@ export default function HomePage() {
           <h1 className="text-4xl font-bold">Image Batch Processor</h1>
         </div>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-          Process up to 20 images with rotation, auto-cropping, and resizing. 
-          All processing happens in your browser for maximum privacy.
+          Process up to 20 images with rotation, intelligent auto-cropping, and resizing. 
+          Auto-cropping removes transparent borders after rotation. All processing happens in your browser for maximum privacy.
         </p>
       </div>
 
