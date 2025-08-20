@@ -25,6 +25,21 @@ function devLog(message, data = null) {
   }
 }
 
+// Performance timing helper
+const timer = {
+  start: function(label) {
+    this[label] = performance.now()
+  },
+  end: function(label) {
+    const elapsed = performance.now() - this[label]
+    devLog(`${label} completed in ${elapsed.toFixed(2)}ms`)
+    return elapsed
+  }
+}
+
+// Debug mode flag (set to true for debugging)
+const DEBUG_MODE = typeof self !== 'undefined' && self.location && self.location.hostname === 'localhost'
+
 // EXIF normalization - apply orientation correction
 function normalizeImageOrientation(imageBitmap) {
   // For now, we assume the image is already oriented correctly
@@ -33,61 +48,69 @@ function normalizeImageOrientation(imageBitmap) {
   return imageBitmap
 }
 
-// Calculate canvas size needed for rotation without clipping
-function calculateRotationCanvasSize(width, height, angleDegrees) {
+// Perform rotation with proper alpha-based trimming (iPhone style)
+function rotateAndTrimImage(imageBitmap, angleDegrees) {
+  timer.start('rotation')
+  
+  const { width: origWidth, height: origHeight } = imageBitmap
+  
+  // Calculate oversized canvas to prevent clipping during rotation
   const angleRad = (Math.abs(angleDegrees) * Math.PI) / 180
   const cos = Math.abs(Math.cos(angleRad))
   const sin = Math.abs(Math.sin(angleRad))
+  const canvasWidth = Math.ceil(origWidth * cos + origHeight * sin) + 20 // Extra padding for safety
+  const canvasHeight = Math.ceil(origWidth * sin + origHeight * cos) + 20
   
-  const newWidth = Math.ceil(width * cos + height * sin)
-  const newHeight = Math.ceil(width * sin + height * cos)
+  // Create rotation canvas with transparent background
+  const rotationCanvas = new OffscreenCanvas(canvasWidth, canvasHeight)
+  const rotationCtx = rotationCanvas.getContext('2d')
+  if (!rotationCtx) throw new Error('Failed to get 2D context for rotation')
   
-  return { width: newWidth, height: newHeight }
-}
-
-// Perform centered rotation on transparent background
-function rotateImageCentered(imageBitmap, angleDegrees) {
-  const { width: origWidth, height: origHeight } = imageBitmap
-  const { width: canvasWidth, height: canvasHeight } = calculateRotationCanvasSize(origWidth, origHeight, angleDegrees)
+  // CRITICAL: Do NOT fill background - keep transparent
+  // rotationCtx.clearRect is sufficient for transparency
+  rotationCtx.clearRect(0, 0, canvasWidth, canvasHeight)
   
-  const canvas = new OffscreenCanvas(canvasWidth, canvasHeight)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Failed to get 2D context for rotation')
+  // Perform centered rotation
+  rotationCtx.save()
+  rotationCtx.translate(canvasWidth / 2, canvasHeight / 2)
+  rotationCtx.rotate(-angleRad * (angleDegrees >= 0 ? 1 : -1)) // Respect sign
+  rotationCtx.drawImage(imageBitmap, -origWidth / 2, -origHeight / 2)
+  rotationCtx.restore()
   
-  // Clear canvas with transparent background (no white fill!)
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+  timer.end('rotation')
   
-  // Rotate and draw centered
-  const angleRad = (angleDegrees * Math.PI) / 180
-  ctx.save()
-  ctx.translate(canvasWidth / 2, canvasHeight / 2)
-  ctx.rotate(-angleRad) // Negative for clockwise
-  ctx.drawImage(imageBitmap, -origWidth / 2, -origHeight / 2)
-  ctx.restore()
-  
-  devLog(`Centered rotation completed: ${angleDegrees}°`, { 
+  devLog(`Rotation completed: ${angleDegrees}°`, { 
     original: `${origWidth}x${origHeight}`, 
-    canvas: `${canvasWidth}x${canvasHeight}` 
+    rotationCanvas: `${canvasWidth}x${canvasHeight}` 
   })
   
-  return canvas
+  // Now perform alpha-based trim
+  timer.start('alphaTrim')
+  const trimmedCanvas = trimByAlphaContent(rotationCanvas)
+  timer.end('alphaTrim')
+  
+  return trimmedCanvas
 }
 
-// Auto-trim by alpha detection - find minimal bounding box
-function trimCanvasByAlpha(canvas, alphaThreshold = 5) {
+// Alpha-based trim - find exact content boundaries
+function trimByAlphaContent(canvas, alphaThreshold = 1) {
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Failed to get 2D context for trimming')
+  if (!ctx) throw new Error('Failed to get 2D context for alpha trim')
   
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const data = imageData.data
   
-  let minX = canvas.width, minY = canvas.height
-  let maxX = 0, maxY = 0
+  let minX = canvas.width
+  let minY = canvas.height
+  let maxX = -1
+  let maxY = -1
   
-  // Scan for non-transparent pixels
+  // Scan all pixels for any alpha > threshold
   for (let y = 0; y < canvas.height; y++) {
     for (let x = 0; x < canvas.width; x++) {
-      const alpha = data[(y * canvas.width + x) * 4 + 3]
+      const pixelIndex = (y * canvas.width + x) * 4
+      const alpha = data[pixelIndex + 3]
+      
       if (alpha > alphaThreshold) {
         minX = Math.min(minX, x)
         minY = Math.min(minY, y)
@@ -97,9 +120,9 @@ function trimCanvasByAlpha(canvas, alphaThreshold = 5) {
     }
   }
   
-  // If no content found, return original
-  if (minX >= maxX || minY >= maxY) {
-    devLog('No content found for trimming, returning original')
+  // If no content found, return original (should not happen)
+  if (maxX === -1 || maxY === -1) {
+    devLog('WARNING: No alpha content found, returning original canvas')
     return canvas
   }
   
@@ -111,14 +134,30 @@ function trimCanvasByAlpha(canvas, alphaThreshold = 5) {
   const trimmedCtx = trimmedCanvas.getContext('2d')
   if (!trimmedCtx) throw new Error('Failed to get 2D context for trimmed canvas')
   
-  // Copy trimmed area
+  // Copy only the content area (this maintains transparency)
   trimmedCtx.drawImage(canvas, minX, minY, trimWidth, trimHeight, 0, 0, trimWidth, trimHeight)
+  
+  const trimRect = { x: minX, y: minY, width: trimWidth, height: trimHeight }
   
   devLog(`Alpha trim completed`, { 
     original: `${canvas.width}x${canvas.height}`,
     trimmed: `${trimWidth}x${trimHeight}`,
-    bounds: `(${minX},${minY}) to (${maxX},${maxY})`
+    trimRect
   })
+  
+  // Debug mode: draw red border on trimmed area
+  if (DEBUG_MODE) {
+    const debugCanvas = new OffscreenCanvas(trimWidth, trimHeight)
+    const debugCtx = debugCanvas.getContext('2d')
+    if (debugCtx) {
+      debugCtx.drawImage(trimmedCanvas, 0, 0)
+      debugCtx.strokeStyle = 'red'
+      debugCtx.lineWidth = 2
+      debugCtx.strokeRect(1, 1, trimWidth - 2, trimHeight - 2)
+      devLog('Debug: Red border applied to trimmed area')
+      return debugCanvas
+    }
+  }
   
   return trimmedCanvas
 }
@@ -126,47 +165,55 @@ function trimCanvasByAlpha(canvas, alphaThreshold = 5) {
 function processImage(img, options) {
   return new Promise(async (resolve, reject) => {
     try {
+      timer.start('totalProcessing')
+      
       // Use OffscreenCanvas (should always be available in Web Workers)
       if (typeof OffscreenCanvas === 'undefined') {
         throw new Error('OffscreenCanvas is not available in this environment')
       }
       
-      devLog('Starting image processing pipeline', { 
+      devLog('🚀 Starting iPhone-style processing pipeline', { 
         dimensions: `${img.width}x${img.height}`,
         rotation: options.rotation,
-        format: options.format
+        format: options.format,
+        debugMode: DEBUG_MODE
       })
       
-      // PIPELINE: EXIF → rotate → trim → crop → resize → export
+      // STRICT PIPELINE: EXIF → rotate+trim → crop → resize → export
       let workingCanvas
 
       // Step 1: EXIF Normalization
+      timer.start('exifNormalization')
       const normalizedImg = normalizeImageOrientation(img)
+      timer.end('exifNormalization')
       
-      // Step 2: Rotation (if needed)
+      // Step 2: Rotation + Alpha Trim (CRITICAL STEP)
       if (options.rotation !== 0) {
-        workingCanvas = rotateImageCentered(normalizedImg, options.rotation)
-        
-        // Step 3: Auto-trim by alpha detection
-        workingCanvas = trimCanvasByAlpha(workingCanvas)
+        // This function does both rotation AND alpha-based trimming
+        workingCanvas = rotateAndTrimImage(normalizedImg, options.rotation)
       } else {
-        // No rotation: create canvas with original image
+        // No rotation: use original image on transparent canvas
+        timer.start('noRotationSetup')
         workingCanvas = new OffscreenCanvas(img.width, img.height)
         const ctx = workingCanvas.getContext('2d')
         if (!ctx) throw new Error('Failed to get 2D context')
         
-        // Draw on transparent background (no white fill for consistency)
+        // CRITICAL: Keep transparent background
         ctx.clearRect(0, 0, workingCanvas.width, workingCanvas.height)
         ctx.drawImage(normalizedImg, 0, 0)
-        devLog('No rotation applied, using original image')
+        timer.end('noRotationSetup')
+        devLog('No rotation applied, using original image on transparent canvas')
       }
 
-      // Step 4: Apply custom crop if specified (user crop after auto-trim)
+      // Step 3: Apply user crop if specified (after auto-trim)
       if (options.cropWidth > 0 && options.cropHeight > 0) {
+        timer.start('userCrop')
         const cropCanvas = new OffscreenCanvas(options.cropWidth, options.cropHeight)
         const cropCtx = cropCanvas.getContext('2d')
         if (!cropCtx) throw new Error('Failed to get 2D context for crop')
         
+        // Keep transparent background for user crop too
+        cropCtx.clearRect(0, 0, options.cropWidth, options.cropHeight)
         cropCtx.drawImage(
           workingCanvas,
           options.cropX, options.cropY, options.cropWidth, options.cropHeight,
@@ -174,14 +221,16 @@ function processImage(img, options) {
         )
         
         workingCanvas = cropCanvas
+        timer.end('userCrop')
         devLog('Custom crop applied', { 
           crop: `${options.cropWidth}x${options.cropHeight}`,
           position: `(${options.cropX},${options.cropY})`
         })
       }
 
-      // Step 5: Apply resize if specified
+      // Step 4: Apply resize if specified
       if (options.resizeWidth > 0 || options.resizeHeight > 0) {
+        timer.start('resize')
         let newWidth = options.resizeWidth || workingCanvas.width
         let newHeight = options.resizeHeight || workingCanvas.height
 
@@ -195,7 +244,6 @@ function processImage(img, options) {
             newHeight = options.resizeHeight
             newWidth = Math.round(newHeight * aspectRatio)
           } else if (options.resizeWidth && options.resizeHeight) {
-            // Use the constraint that requires the smallest scale
             const scaleX = options.resizeWidth / workingCanvas.width
             const scaleY = options.resizeHeight / workingCanvas.height
             const scale = Math.min(scaleX, scaleY)
@@ -209,12 +257,13 @@ function processImage(img, options) {
         const resizeCtx = resizeCanvas.getContext('2d')
         if (!resizeCtx) throw new Error('Failed to get 2D context for resize')
         
-        // Use high-quality scaling
+        // High-quality scaling with transparent background
         resizeCtx.imageSmoothingEnabled = true
         resizeCtx.imageSmoothingQuality = 'high'
-        
+        resizeCtx.clearRect(0, 0, newWidth, newHeight)
         resizeCtx.drawImage(workingCanvas, 0, 0, newWidth, newHeight)
         workingCanvas = resizeCanvas
+        timer.end('resize')
         
         devLog('Resize applied', { 
           original: `${workingCanvas.width}x${workingCanvas.height}`,
@@ -222,38 +271,46 @@ function processImage(img, options) {
         })
       }
 
-      // Step 6: Export to blob
+      // Step 5: Export (ONLY NOW apply background if needed)
+      timer.start('export')
       const mimeType = `image/${options.format}`
       const quality = options.format === 'png' ? undefined : options.quality / 100
       
-      devLog('Starting export', { 
+      devLog('Starting export (background applied only now)', { 
         format: options.format,
         quality: options.quality,
         finalDimensions: `${workingCanvas.width}x${workingCanvas.height}`
       })
       
-      // For JPEG, we might want to composite on white background to avoid transparency issues
+      // CRITICAL: Apply background ONLY for export, AFTER all trimming is done
       let exportCanvas = workingCanvas
       if (options.format === 'jpeg') {
         exportCanvas = new OffscreenCanvas(workingCanvas.width, workingCanvas.height)
         const exportCtx = exportCanvas.getContext('2d')
         if (!exportCtx) throw new Error('Failed to get 2D context for export')
         
-        // Fill with white background for JPEG
+        // NOW we apply white background (trim already removed transparencies)
         exportCtx.fillStyle = 'white'
         exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height)
         exportCtx.drawImage(workingCanvas, 0, 0)
         
-        devLog('Applied white background for JPEG export')
+        devLog('✅ White background applied ONLY for JPEG export (after trim)')
       }
       
-      // OffscreenCanvas convertToBlob method
+      // Final export
       const blob = await exportCanvas.convertToBlob({ type: mimeType, quality })
-      devLog('Export completed', { size: `${Math.round(blob.size / 1024)}KB` })
+      timer.end('export')
+      timer.end('totalProcessing')
+      
+      devLog('🎉 Processing completed successfully', { 
+        size: `${Math.round(blob.size / 1024)}KB`,
+        finalDimensions: `${exportCanvas.width}x${exportCanvas.height}`
+      })
+      
       resolve(blob)
         
     } catch (error) {
-      devLog('Processing failed', { error: error.message })
+      devLog('❌ Processing failed', { error: error.message })
       reject(error)
     }
   })
