@@ -17,7 +17,7 @@ const BUCKET_NAME = process.env.S3_BUCKET!
 
 function isValidAdminToken(token: string | null): boolean {
   const adminToken = process.env.ADMIN_TOKEN
-  return adminToken && token === adminToken
+  return !!(adminToken && token === adminToken)
 }
 
 export async function GET(request: NextRequest) {
