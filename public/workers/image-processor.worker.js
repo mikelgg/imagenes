@@ -48,70 +48,165 @@ function normalizeImageOrientation(imageBitmap) {
   return imageBitmap
 }
 
-// Perform rotation with proper alpha-based trimming (iPhone style)
+// iPhone-style rotation with expand=True equivalent and smart background removal
 function rotateAndTrimImage(imageBitmap, angleDegrees) {
   timer.start('rotation')
   
   const { width: origWidth, height: origHeight } = imageBitmap
   
-  // Calculate oversized canvas to prevent clipping during rotation
-  const angleRad = (Math.abs(angleDegrees) * Math.PI) / 180
+  // Normalize angle and handle edge cases
+  let normalizedAngle = ((angleDegrees % 360) + 360) % 360
+  if (normalizedAngle > 180) normalizedAngle -= 360
+  
+  // For tiny rotations, skip processing
+  if (Math.abs(normalizedAngle) < 0.5) {
+    devLog('Skipping minimal rotation', { angle: normalizedAngle })
+    return imageBitmap
+  }
+  
+  const angleRad = (normalizedAngle * Math.PI) / 180
   const cos = Math.abs(Math.cos(angleRad))
   const sin = Math.abs(Math.sin(angleRad))
-  const canvasWidth = Math.ceil(origWidth * cos + origHeight * sin) + 20 // Extra padding for safety
-  const canvasHeight = Math.ceil(origWidth * sin + origHeight * cos) + 20
   
-  // Create rotation canvas with transparent background
+  // EXPAND=TRUE equivalent: Calculate expanded canvas size for full image visibility
+  // Add generous padding to ensure no clipping at any angle
+  const expandedWidth = Math.ceil(origWidth * cos + origHeight * sin)
+  const expandedHeight = Math.ceil(origWidth * sin + origHeight * cos)
+  
+  // Add extra margin for edge interpolation and safety
+  const margin = Math.max(20, Math.min(origWidth, origHeight) * 0.05)
+  const canvasWidth = expandedWidth + margin * 2
+  const canvasHeight = expandedHeight + margin * 2
+  
+  // Create large rotation canvas with TRANSPARENT background
   const rotationCanvas = new OffscreenCanvas(canvasWidth, canvasHeight)
   const rotationCtx = rotationCanvas.getContext('2d')
   if (!rotationCtx) throw new Error('Failed to get 2D context for rotation')
   
-  // CRITICAL: Do NOT fill background - keep transparent
-  // rotationCtx.clearRect is sufficient for transparency
+  // CRITICAL: Transparent background only - no white/black fills
   rotationCtx.clearRect(0, 0, canvasWidth, canvasHeight)
+  
+  // High-quality rotation settings
+  rotationCtx.imageSmoothingEnabled = true
+  rotationCtx.imageSmoothingQuality = 'high'
   
   // Perform centered rotation
   rotationCtx.save()
   rotationCtx.translate(canvasWidth / 2, canvasHeight / 2)
-  rotationCtx.rotate(-angleRad * (angleDegrees >= 0 ? 1 : -1)) // Respect sign
+  rotationCtx.rotate(-angleRad) // Standard clockwise rotation
   rotationCtx.drawImage(imageBitmap, -origWidth / 2, -origHeight / 2)
   rotationCtx.restore()
   
   timer.end('rotation')
   
-  devLog(`Rotation completed: ${angleDegrees}°`, { 
+  devLog(`📐 iPhone-style rotation completed: ${normalizedAngle}°`, { 
     original: `${origWidth}x${origHeight}`, 
-    rotationCanvas: `${canvasWidth}x${canvasHeight}` 
+    expanded: `${canvasWidth}x${canvasHeight}`,
+    expandedContent: `${expandedWidth}x${expandedHeight}`,
+    margin: `${margin}px`
   })
   
-  // Now perform alpha-based trim
-  timer.start('alphaTrim')
+  // Smart trim to remove all background (transparent + any uniform color)
+  timer.start('smartTrim')
   const trimmedCanvas = trimByAlphaContent(rotationCanvas)
-  timer.end('alphaTrim')
+  timer.end('smartTrim')
   
   return trimmedCanvas
 }
 
-// Alpha-based trim - find exact content boundaries
+// iPhone-style smart trim - detect and remove background (white, transparent, or any uniform color)
 function trimByAlphaContent(canvas, alphaThreshold = 1) {
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Failed to get 2D context for alpha trim')
+  if (!ctx) throw new Error('Failed to get 2D context for smart trim')
   
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const data = imageData.data
+  
+  // First, detect the background color by sampling corners
+  const cornerSamples = [
+    // Top-left corner
+    { x: 0, y: 0 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    // Top-right corner  
+    { x: canvas.width - 1, y: 0 },
+    { x: canvas.width - 2, y: 0 },
+    { x: canvas.width - 1, y: 1 },
+    // Bottom-left corner
+    { x: 0, y: canvas.height - 1 },
+    { x: 1, y: canvas.height - 1 },
+    { x: 0, y: canvas.height - 2 },
+    // Bottom-right corner
+    { x: canvas.width - 1, y: canvas.height - 1 },
+    { x: canvas.width - 2, y: canvas.height - 1 },
+    { x: canvas.width - 1, y: canvas.height - 2 }
+  ]
+  
+  // Sample corner colors to detect background
+  const backgroundColors = new Map()
+  for (const sample of cornerSamples) {
+    const idx = (sample.y * canvas.width + sample.x) * 4
+    const r = data[idx]
+    const g = data[idx + 1]
+    const b = data[idx + 2]
+    const a = data[idx + 3]
+    
+    const colorKey = `${r},${g},${b},${a}`
+    backgroundColors.set(colorKey, (backgroundColors.get(colorKey) || 0) + 1)
+  }
+  
+  // Find the most common background color
+  let dominantBgColor = null
+  let maxCount = 0
+  for (const [color, count] of backgroundColors) {
+    if (count > maxCount) {
+      maxCount = count
+      dominantBgColor = color.split(',').map(Number)
+    }
+  }
+  
+  devLog('📊 Background detection', { 
+    dominantColor: dominantBgColor ? `rgba(${dominantBgColor.join(',')})` : 'none',
+    samples: backgroundColors.size
+  })
   
   let minX = canvas.width
   let minY = canvas.height
   let maxX = -1
   let maxY = -1
   
-  // Scan all pixels for any alpha > threshold
+  // Scan all pixels to find content boundaries
   for (let y = 0; y < canvas.height; y++) {
     for (let x = 0; x < canvas.width; x++) {
       const pixelIndex = (y * canvas.width + x) * 4
-      const alpha = data[pixelIndex + 3]
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1]
+      const b = data[pixelIndex + 2]
+      const a = data[pixelIndex + 3]
       
-      if (alpha > alphaThreshold) {
+      let isBackground = false
+      
+      // Check if pixel is transparent (alpha-based)
+      if (a <= alphaThreshold) {
+        isBackground = true
+      }
+      // Check if pixel matches dominant background color (with tolerance)
+      else if (dominantBgColor) {
+        const [bgR, bgG, bgB, bgA] = dominantBgColor
+        const tolerance = 10 // Allow small variations
+        
+        const rDiff = Math.abs(r - bgR)
+        const gDiff = Math.abs(g - bgG)
+        const bDiff = Math.abs(b - bgB)
+        const aDiff = Math.abs(a - bgA)
+        
+        if (rDiff <= tolerance && gDiff <= tolerance && bDiff <= tolerance && aDiff <= tolerance) {
+          isBackground = true
+        }
+      }
+      
+      // If pixel is NOT background, include it in content bounds
+      if (!isBackground) {
         minX = Math.min(minX, x)
         minY = Math.min(minY, y)
         maxX = Math.max(maxX, x)
@@ -120,41 +215,58 @@ function trimByAlphaContent(canvas, alphaThreshold = 1) {
     }
   }
   
-  // If no content found, return original (should not happen)
+  // If no content found, return original
   if (maxX === -1 || maxY === -1) {
-    devLog('WARNING: No alpha content found, returning original canvas')
+    devLog('⚠️ WARNING: No content found, returning original canvas')
     return canvas
   }
   
-  const trimWidth = maxX - minX + 1
-  const trimHeight = maxY - minY + 1
+  // Add 1px safety margin if possible
+  const safeMinX = Math.max(0, minX - 1)
+  const safeMinY = Math.max(0, minY - 1)
+  const safeMaxX = Math.min(canvas.width - 1, maxX + 1)
+  const safeMaxY = Math.min(canvas.height - 1, maxY + 1)
   
-  // Create trimmed canvas
+  const trimWidth = safeMaxX - safeMinX + 1
+  const trimHeight = safeMaxY - safeMinY + 1
+  
+  // Create trimmed canvas with transparent background
   const trimmedCanvas = new OffscreenCanvas(trimWidth, trimHeight)
   const trimmedCtx = trimmedCanvas.getContext('2d')
   if (!trimmedCtx) throw new Error('Failed to get 2D context for trimmed canvas')
   
-  // Copy only the content area (this maintains transparency)
-  trimmedCtx.drawImage(canvas, minX, minY, trimWidth, trimHeight, 0, 0, trimWidth, trimHeight)
+  // Clear with transparent background
+  trimmedCtx.clearRect(0, 0, trimWidth, trimHeight)
   
-  const trimRect = { x: minX, y: minY, width: trimWidth, height: trimHeight }
+  // Copy only the content area
+  trimmedCtx.drawImage(canvas, safeMinX, safeMinY, trimWidth, trimHeight, 0, 0, trimWidth, trimHeight)
   
-  devLog(`Alpha trim completed`, { 
+  const trimRect = { x: safeMinX, y: safeMinY, width: trimWidth, height: trimHeight }
+  const reductionPercent = Math.round((1 - (trimWidth * trimHeight) / (canvas.width * canvas.height)) * 100)
+  
+  devLog(`🎯 iPhone-style trim completed`, { 
     original: `${canvas.width}x${canvas.height}`,
     trimmed: `${trimWidth}x${trimHeight}`,
+    backgroundRemoved: `${reductionPercent}%`,
     trimRect
   })
   
-  // Debug mode: draw red border on trimmed area
+  // Debug mode: draw red border and show trim area
   if (DEBUG_MODE) {
     const debugCanvas = new OffscreenCanvas(trimWidth, trimHeight)
     const debugCtx = debugCanvas.getContext('2d')
     if (debugCtx) {
       debugCtx.drawImage(trimmedCanvas, 0, 0)
       debugCtx.strokeStyle = 'red'
-      debugCtx.lineWidth = 2
-      debugCtx.strokeRect(1, 1, trimWidth - 2, trimHeight - 2)
-      devLog('Debug: Red border applied to trimmed area')
+      debugCtx.lineWidth = 3
+      debugCtx.strokeRect(2, 2, trimWidth - 4, trimHeight - 4)
+      
+      // Add debug info text
+      debugCtx.fillStyle = 'red'
+      debugCtx.font = 'bold 14px Arial'
+      debugCtx.fillText(`-${reductionPercent}%`, 8, 20)
+      
+      devLog('🔍 Debug: Red border applied showing trimmed area')
       return debugCanvas
     }
   }
