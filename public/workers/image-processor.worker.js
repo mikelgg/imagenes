@@ -106,107 +106,196 @@ function rotateAndTrimImage(imageBitmap, angleDegrees) {
     margin: `${margin}px`
   })
   
-  // Smart trim to remove all background (transparent + any uniform color)
+  // Robust trim with alpha detection + geometric fallback
   timer.start('smartTrim')
-  const trimmedCanvas = trimByAlphaContent(rotationCanvas)
+  const trimResult = trimByAlphaContent(rotationCanvas, normalizedAngle, 6) // threshold=6 for anti-alias
   timer.end('smartTrim')
   
-  return trimmedCanvas
+  // Return both canvas and debug info
+  return trimResult
 }
 
-// iPhone-style smart trim - detect and remove background (white, transparent, or any uniform color)
-function trimByAlphaContent(canvas, alphaThreshold = 1) {
+// Calculate maximum inscribed rectangle for geometric fallback
+function calculateMaxInscribedRectangle(originalWidth, originalHeight, angleDegrees) {
+  const angleRad = (Math.abs(angleDegrees) * Math.PI) / 180
+  const sin = Math.abs(Math.sin(angleRad))
+  const cos = Math.abs(Math.cos(angleRad))
+  
+  // For 90-degree multiples, return original dimensions
+  if (angleDegrees % 90 === 0) {
+    return { width: originalWidth, height: originalHeight }
+  }
+  
+  // Calculate the maximum axis-aligned rectangle that fits inside rotated image
+  // Using the formula for maximum inscribed rectangle in rotated rectangle
+  const w = originalWidth
+  const h = originalHeight
+  
+  const inscribedWidth = (w * cos - h * sin) / (cos * cos - sin * sin)
+  const inscribedHeight = (h * cos - w * sin) / (cos * cos - sin * sin)
+  
+  // Ensure positive dimensions and don't exceed original
+  const finalWidth = Math.max(1, Math.min(originalWidth, Math.abs(inscribedWidth)))
+  const finalHeight = Math.max(1, Math.min(originalHeight, Math.abs(inscribedHeight)))
+  
+  return {
+    width: Math.floor(finalWidth),
+    height: Math.floor(finalHeight)
+  }
+}
+
+// Robust trim with alpha detection primary + geometric fallback
+function trimByAlphaContent(canvas, angle = 0, alphaThreshold = 6) {
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Failed to get 2D context for smart trim')
+  if (!ctx) throw new Error('Failed to get 2D context for robust trim')
   
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const data = imageData.data
   
-  // First, detect the background color by sampling corners
-  const cornerSamples = [
-    // Top-left corner
-    { x: 0, y: 0 },
-    { x: 1, y: 0 },
-    { x: 0, y: 1 },
-    // Top-right corner  
-    { x: canvas.width - 1, y: 0 },
-    { x: canvas.width - 2, y: 0 },
-    { x: canvas.width - 1, y: 1 },
-    // Bottom-left corner
-    { x: 0, y: canvas.height - 1 },
-    { x: 1, y: canvas.height - 1 },
-    { x: 0, y: canvas.height - 2 },
-    // Bottom-right corner
-    { x: canvas.width - 1, y: canvas.height - 1 },
-    { x: canvas.width - 2, y: canvas.height - 1 },
-    { x: canvas.width - 1, y: canvas.height - 2 }
-  ]
+  // Step 1: Analyze edges for alpha content
+  const edgeAnalysis = analyzeEdgeAlpha(data, canvas.width, canvas.height, alphaThreshold)
   
-  // Sample corner colors to detect background
-  const backgroundColors = new Map()
-  for (const sample of cornerSamples) {
-    const idx = (sample.y * canvas.width + sample.x) * 4
-    const r = data[idx]
-    const g = data[idx + 1]
-    const b = data[idx + 2]
-    const a = data[idx + 3]
+  devLog('🔍 Edge alpha analysis', edgeAnalysis)
+  
+  // Step 2: Try alpha-based trim first
+  const alphaTrimResult = tryAlphaTrim(data, canvas.width, canvas.height, alphaThreshold)
+  
+  let trimResult
+  let trimMethod = 'alpha'
+  
+  if (alphaTrimResult.success) {
+    // Alpha trim successful
+    trimResult = alphaTrimResult
+    devLog('✅ Alpha trim successful', { 
+      bounds: alphaTrimResult.bounds,
+      reductionPercent: Math.round((1 - (alphaTrimResult.bounds.width * alphaTrimResult.bounds.height) / (canvas.width * canvas.height)) * 100)
+    })
+  } else {
+    // Fallback to geometric trim
+    trimMethod = 'geometric'
+    const { width: origWidth, height: origHeight } = canvas
+    const maxRect = calculateMaxInscribedRectangle(origWidth, origHeight, angle)
     
-    const colorKey = `${r},${g},${b},${a}`
-    backgroundColors.set(colorKey, (backgroundColors.get(colorKey) || 0) + 1)
+    const centerX = Math.floor(origWidth / 2)
+    const centerY = Math.floor(origHeight / 2)
+    const x = centerX - Math.floor(maxRect.width / 2)
+    const y = centerY - Math.floor(maxRect.height / 2)
+    
+    trimResult = {
+      bounds: { x, y, width: maxRect.width, height: maxRect.height },
+      success: true
+    }
+    
+    devLog('⚠️ Geometric fallback applied', { 
+      reason: 'Alpha trim failed',
+      maxInscribed: maxRect,
+      centerCrop: trimResult.bounds
+    })
   }
   
-  // Find the most common background color
-  let dominantBgColor = null
-  let maxCount = 0
-  for (const [color, count] of backgroundColors) {
-    if (count > maxCount) {
-      maxCount = count
-      dominantBgColor = color.split(',').map(Number)
+  // Step 3: Create trimmed canvas
+  const { x, y, width, height } = trimResult.bounds
+  const trimmedCanvas = new OffscreenCanvas(width, height)
+  const trimmedCtx = trimmedCanvas.getContext('2d')
+  if (!trimmedCtx) throw new Error('Failed to get 2D context for trimmed canvas')
+  
+  // CRITICAL: Maintain alpha channel
+  trimmedCtx.clearRect(0, 0, width, height)
+  trimmedCtx.drawImage(canvas, x, y, width, height, 0, 0, width, height)
+  
+  // Step 4: Verify result (for debug)
+  const finalEdgeAnalysis = analyzeEdgeAlpha(
+    trimmedCtx.getImageData(0, 0, width, height).data,
+    width, height, alphaThreshold
+  )
+  
+  const debugInfo = {
+    angle,
+    trimMethod,
+    trimRect: { x, y, w: width, h: height },
+    edgesAlphaCounts: edgeAnalysis.counts,
+    finalEdgesAlphaCounts: finalEdgeAnalysis.counts,
+    originalSize: `${canvas.width}x${canvas.height}`,
+    finalSize: `${width}x${height}`
+  }
+  
+  devLog(`🎯 Robust trim completed`, debugInfo)
+  
+  // Debug mode: visual verification
+  if (DEBUG_MODE) {
+    const debugCanvas = new OffscreenCanvas(width, height)
+    const debugCtx = debugCanvas.getContext('2d')
+    if (debugCtx) {
+      debugCtx.drawImage(trimmedCanvas, 0, 0)
+      
+      // Red border
+      debugCtx.strokeStyle = 'red'
+      debugCtx.lineWidth = 2
+      debugCtx.strokeRect(1, 1, width - 2, height - 2)
+      
+      // Method indicator
+      debugCtx.fillStyle = 'red'
+      debugCtx.font = 'bold 12px Arial'
+      debugCtx.fillText(trimMethod.toUpperCase(), 5, 15)
+      debugCtx.fillText(`${angle}°`, 5, 30)
+      
+      devLog('🔍 Debug visual applied')
+      
+      return { canvas: debugCanvas, debugInfo }
     }
   }
   
-  devLog('📊 Background detection', { 
-    dominantColor: dominantBgColor ? `rgba(${dominantBgColor.join(',')})` : 'none',
-    samples: backgroundColors.size
-  })
+  return { canvas: trimmedCanvas, debugInfo }
+}
+
+// Analyze alpha content on edges
+function analyzeEdgeAlpha(data, width, height, threshold) {
+  const counts = { top: 0, bottom: 0, left: 0, right: 0 }
   
-  let minX = canvas.width
-  let minY = canvas.height
-  let maxX = -1
-  let maxY = -1
+  // Top edge
+  for (let x = 0; x < width; x++) {
+    const alpha = data[(0 * width + x) * 4 + 3]
+    if (alpha > threshold) counts.top++
+  }
   
-  // Scan all pixels to find content boundaries
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      const pixelIndex = (y * canvas.width + x) * 4
-      const r = data[pixelIndex]
-      const g = data[pixelIndex + 1]
-      const b = data[pixelIndex + 2]
-      const a = data[pixelIndex + 3]
-      
-      let isBackground = false
-      
-      // Check if pixel is transparent (alpha-based)
-      if (a <= alphaThreshold) {
-        isBackground = true
-      }
-      // Check if pixel matches dominant background color (with tolerance)
-      else if (dominantBgColor) {
-        const [bgR, bgG, bgB, bgA] = dominantBgColor
-        const tolerance = 10 // Allow small variations
-        
-        const rDiff = Math.abs(r - bgR)
-        const gDiff = Math.abs(g - bgG)
-        const bDiff = Math.abs(b - bgB)
-        const aDiff = Math.abs(a - bgA)
-        
-        if (rDiff <= tolerance && gDiff <= tolerance && bDiff <= tolerance && aDiff <= tolerance) {
-          isBackground = true
-        }
-      }
-      
-      // If pixel is NOT background, include it in content bounds
-      if (!isBackground) {
+  // Bottom edge
+  for (let x = 0; x < width; x++) {
+    const alpha = data[((height - 1) * width + x) * 4 + 3]
+    if (alpha > threshold) counts.bottom++
+  }
+  
+  // Left edge
+  for (let y = 0; y < height; y++) {
+    const alpha = data[(y * width + 0) * 4 + 3]
+    if (alpha > threshold) counts.left++
+  }
+  
+  // Right edge
+  for (let y = 0; y < height; y++) {
+    const alpha = data[(y * width + (width - 1)) * 4 + 3]
+    if (alpha > threshold) counts.right++
+  }
+  
+  const totalEdgePixels = width * 2 + height * 2
+  const totalAlphaPixels = counts.top + counts.bottom + counts.left + counts.right
+  
+  return {
+    counts,
+    totalEdgePixels,
+    totalAlphaPixels,
+    hasTransparentEdges: totalAlphaPixels < totalEdgePixels * 0.9 // 90% threshold
+  }
+}
+
+// Try alpha-based trim
+function tryAlphaTrim(data, width, height, threshold) {
+  let minX = width, minY = height, maxX = -1, maxY = -1
+  
+  // Scan all pixels for alpha content
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = data[(y * width + x) * 4 + 3]
+      if (alpha > threshold) {
         minX = Math.min(minX, x)
         minY = Math.min(minY, y)
         maxX = Math.max(maxX, x)
@@ -215,63 +304,23 @@ function trimByAlphaContent(canvas, alphaThreshold = 1) {
     }
   }
   
-  // If no content found, return original
   if (maxX === -1 || maxY === -1) {
-    devLog('⚠️ WARNING: No content found, returning original canvas')
-    return canvas
+    return { success: false, reason: 'No alpha content found' }
   }
   
-  // Add 1px safety margin if possible
-  const safeMinX = Math.max(0, minX - 1)
-  const safeMinY = Math.max(0, minY - 1)
-  const safeMaxX = Math.min(canvas.width - 1, maxX + 1)
-  const safeMaxY = Math.min(canvas.height - 1, maxY + 1)
+  const trimWidth = maxX - minX + 1
+  const trimHeight = maxY - minY + 1
   
-  const trimWidth = safeMaxX - safeMinX + 1
-  const trimHeight = safeMaxY - safeMinY + 1
-  
-  // Create trimmed canvas with transparent background
-  const trimmedCanvas = new OffscreenCanvas(trimWidth, trimHeight)
-  const trimmedCtx = trimmedCanvas.getContext('2d')
-  if (!trimmedCtx) throw new Error('Failed to get 2D context for trimmed canvas')
-  
-  // Clear with transparent background
-  trimmedCtx.clearRect(0, 0, trimWidth, trimHeight)
-  
-  // Copy only the content area
-  trimmedCtx.drawImage(canvas, safeMinX, safeMinY, trimWidth, trimHeight, 0, 0, trimWidth, trimHeight)
-  
-  const trimRect = { x: safeMinX, y: safeMinY, width: trimWidth, height: trimHeight }
-  const reductionPercent = Math.round((1 - (trimWidth * trimHeight) / (canvas.width * canvas.height)) * 100)
-  
-  devLog(`🎯 iPhone-style trim completed`, { 
-    original: `${canvas.width}x${canvas.height}`,
-    trimmed: `${trimWidth}x${trimHeight}`,
-    backgroundRemoved: `${reductionPercent}%`,
-    trimRect
-  })
-  
-  // Debug mode: draw red border and show trim area
-  if (DEBUG_MODE) {
-    const debugCanvas = new OffscreenCanvas(trimWidth, trimHeight)
-    const debugCtx = debugCanvas.getContext('2d')
-    if (debugCtx) {
-      debugCtx.drawImage(trimmedCanvas, 0, 0)
-      debugCtx.strokeStyle = 'red'
-      debugCtx.lineWidth = 3
-      debugCtx.strokeRect(2, 2, trimWidth - 4, trimHeight - 4)
-      
-      // Add debug info text
-      debugCtx.fillStyle = 'red'
-      debugCtx.font = 'bold 14px Arial'
-      debugCtx.fillText(`-${reductionPercent}%`, 8, 20)
-      
-      devLog('🔍 Debug: Red border applied showing trimmed area')
-      return debugCanvas
-    }
+  // Verify this creates a meaningful reduction
+  const reduction = 1 - (trimWidth * trimHeight) / (width * height)
+  if (reduction < 0.01) { // Less than 1% reduction
+    return { success: false, reason: 'Insufficient reduction' }
   }
   
-  return trimmedCanvas
+  return {
+    success: true,
+    bounds: { x: minX, y: minY, width: trimWidth, height: trimHeight }
+  }
 }
 
 function processImage(img, options) {
@@ -300,9 +349,12 @@ function processImage(img, options) {
       timer.end('exifNormalization')
       
       // Step 2: Rotation + Alpha Trim (CRITICAL STEP)
+      let debugInfo = null
       if (options.rotation !== 0) {
         // This function does both rotation AND alpha-based trimming
-        workingCanvas = rotateAndTrimImage(normalizedImg, options.rotation)
+        const trimResult = rotateAndTrimImage(normalizedImg, options.rotation)
+        workingCanvas = trimResult.canvas
+        debugInfo = trimResult.debugInfo
       } else {
         // No rotation: use original image on transparent canvas
         timer.start('noRotationSetup')
@@ -314,6 +366,15 @@ function processImage(img, options) {
         ctx.clearRect(0, 0, workingCanvas.width, workingCanvas.height)
         ctx.drawImage(normalizedImg, 0, 0)
         timer.end('noRotationSetup')
+        
+        debugInfo = {
+          angle: 0,
+          trimMethod: 'none',
+          trimRect: { x: 0, y: 0, w: img.width, h: img.height },
+          edgesAlphaCounts: { top: 0, bottom: 0, left: 0, right: 0 },
+          finalEdgesAlphaCounts: { top: 0, bottom: 0, left: 0, right: 0 }
+        }
+        
         devLog('No rotation applied, using original image on transparent canvas')
       }
 
@@ -416,10 +477,24 @@ function processImage(img, options) {
       
       devLog('🎉 Processing completed successfully', { 
         size: `${Math.round(blob.size / 1024)}KB`,
-        finalDimensions: `${exportCanvas.width}x${exportCanvas.height}`
+        finalDimensions: `${exportCanvas.width}x${exportCanvas.height}`,
+        debugInfo
       })
       
-      resolve(blob)
+      // Return debug info in development mode
+      if (DEBUG_MODE && debugInfo) {
+        resolve({
+          blob,
+          debugInfo: {
+            ...debugInfo,
+            finalSize: `${exportCanvas.width}x${exportCanvas.height}`,
+            fileSize: `${Math.round(blob.size / 1024)}KB`,
+            totalProcessingTime: `${(performance.now() - timer.totalProcessing).toFixed(2)}ms`
+          }
+        })
+      } else {
+        resolve(blob)
+      }
         
     } catch (error) {
       devLog('❌ Processing failed', { error: error.message })
@@ -436,14 +511,29 @@ self.onmessage = async (e) => {
     // Load image
     const img = await loadImage(file)
     
-    // Process image
-    const blob = await processImage(img, options)
+    // Process image (may return blob or {blob, debugInfo})
+    const result = await processImage(img, options)
     
-    // Send result back
-    const response = {
-      success: true,
-      result: { blob }
+    // Handle different return types
+    let response
+    if (result.debugInfo) {
+      // Debug mode response
+      response = {
+        success: true,
+        result: {
+          blob: result.blob,
+          debugInfo: result.debugInfo
+        }
+      }
+      devLog('📊 Debug info returned', result.debugInfo)
+    } else {
+      // Normal response
+      response = {
+        success: true,
+        result: { blob: result }
+      }
     }
+    
     self.postMessage(response)
     
   } catch (error) {
