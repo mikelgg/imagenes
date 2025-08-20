@@ -87,6 +87,9 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
       }
       
       const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('Failed to get 2D context from canvas')
+      }
 
       // Set initial canvas size
       canvas.width = img.width
@@ -132,6 +135,9 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
         croppedCanvas.width = inscribed.width
         croppedCanvas.height = inscribed.height
         const croppedCtx = croppedCanvas.getContext('2d')
+        if (!croppedCtx) {
+          throw new Error('Failed to get 2D context from cropped canvas')
+        }
         
         croppedCtx.drawImage(
           canvas,
@@ -157,6 +163,9 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
         cropCanvas.width = options.cropWidth
         cropCanvas.height = options.cropHeight
         const cropCtx = cropCanvas.getContext('2d')
+        if (!cropCtx) {
+          throw new Error('Failed to get 2D context from crop canvas')
+        }
         
         cropCtx.drawImage(
           canvas,
@@ -201,6 +210,9 @@ function processImage(img: HTMLImageElement, options: ProcessingOptions): Promis
         resizeCanvas.width = newWidth
         resizeCanvas.height = newHeight
         const resizeCtx = resizeCanvas.getContext('2d')
+        if (!resizeCtx) {
+          throw new Error('Failed to get 2D context from resize canvas')
+        }
         
         // Use high-quality scaling
         resizeCtx.imageSmoothingEnabled = true
