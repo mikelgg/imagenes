@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
-import { RotateCw, Crop, Resize, Settings } from 'lucide-react'
+import { RotateCw, Crop, Expand, Settings } from 'lucide-react'
 
 interface ProcessingOptionsProps {
   options: {
@@ -144,7 +144,7 @@ export function ProcessingOptions({ options, onChange, disabled }: ProcessingOpt
       {/* Resize */}
       <div className="space-y-3">
         <Label className="flex items-center gap-2">
-          <Resize className="h-4 w-4" />
+          <Expand className="h-4 w-4" />
           Resize (optional)
         </Label>
         <div className="grid grid-cols-2 gap-3">
