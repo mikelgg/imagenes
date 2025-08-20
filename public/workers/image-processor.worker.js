@@ -106,13 +106,82 @@ function rotateAndTrimImage(imageBitmap, angleDegrees) {
     margin: `${margin}px`
   })
   
-  // Robust trim with alpha detection + geometric fallback
+  // Enhanced trim: first try aggressive alpha detection, then geometric fallback
   timer.start('smartTrim')
-  const trimResult = trimByAlphaContent(rotationCanvas, normalizedAngle, 6) // threshold=6 for anti-alias
+  const trimResult = trimByAlphaContent(rotationCanvas, normalizedAngle, 3) // Lower threshold for more aggressive trimming
+  
+  // Apply additional border cleanup if needed
+  const finalResult = applyAggressiveBorderCleanup(trimResult.canvas, normalizedAngle)
   timer.end('smartTrim')
   
   // Return both canvas and debug info
-  return trimResult
+  return { canvas: finalResult, debugInfo: trimResult.debugInfo }
+}
+
+// Apply aggressive border cleanup to eliminate any remaining white/transparent borders
+function applyAggressiveBorderCleanup(canvas, angle) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = imageData.data
+  
+  // Scan from edges inward to find actual content boundaries
+  let minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1
+  
+  // More aggressive scanning: consider a pixel "border" if it's mostly transparent or very light
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const pixelIndex = (y * canvas.width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1]
+      const b = data[pixelIndex + 2]
+      const alpha = data[pixelIndex + 3]
+      
+      // Consider pixel as "content" if it's not transparent and not near-white
+      const isContent = alpha > 20 && (r < 240 || g < 240 || b < 240)
+      
+      if (isContent) {
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x)
+        maxY = Math.max(maxY, y)
+      }
+    }
+  }
+  
+  // If no content found, return original
+  if (maxX === -1 || maxY === -1) {
+    devLog('⚠️ No content found in aggressive cleanup, returning original')
+    return canvas
+  }
+  
+  const contentWidth = maxX - minX + 1
+  const contentHeight = maxY - minY + 1
+  
+  // Only apply if there's a meaningful reduction (at least 2% reduction)
+  const reduction = 1 - (contentWidth * contentHeight) / (canvas.width * canvas.height)
+  if (reduction < 0.02) {
+    devLog('📏 Aggressive cleanup: insufficient reduction, keeping original', { reduction: `${Math.round(reduction * 100)}%` })
+    return canvas
+  }
+  
+  // Create cleaned canvas
+  const cleanCanvas = new OffscreenCanvas(contentWidth, contentHeight)
+  const cleanCtx = cleanCanvas.getContext('2d')
+  if (!cleanCtx) return canvas
+  
+  cleanCtx.clearRect(0, 0, contentWidth, contentHeight)
+  cleanCtx.drawImage(canvas, minX, minY, contentWidth, contentHeight, 0, 0, contentWidth, contentHeight)
+  
+  devLog('🎯 Aggressive border cleanup applied', {
+    original: `${canvas.width}x${canvas.height}`,
+    cleaned: `${contentWidth}x${contentHeight}`,
+    reduction: `${Math.round(reduction * 100)}%`,
+    cropRect: `(${minX},${minY}) ${contentWidth}x${contentHeight}`
+  })
+  
+  return cleanCanvas
 }
 
 // Calculate maximum inscribed rectangle for geometric fallback
@@ -122,25 +191,44 @@ function calculateMaxInscribedRectangle(originalWidth, originalHeight, angleDegr
   const cos = Math.abs(Math.cos(angleRad))
   
   // For 90-degree multiples, return original dimensions
-  if (angleDegrees % 90 === 0) {
+  if (Math.abs(angleDegrees % 90) < 0.1) {
     return { width: originalWidth, height: originalHeight }
   }
   
-  // Calculate the maximum axis-aligned rectangle that fits inside rotated image
-  // Using the formula for maximum inscribed rectangle in rotated rectangle
+  // NEW ALGORITHM: More aggressive calculation to maximize the inscribed rectangle
+  // This uses a better mathematical approach that doesn't leave white borders
   const w = originalWidth
   const h = originalHeight
   
-  const inscribedWidth = (w * cos - h * sin) / (cos * cos - sin * sin)
-  const inscribedHeight = (h * cos - w * sin) / (cos * cos - sin * sin)
+  // For small angles, use original dimensions to avoid over-cropping
+  if (Math.abs(angleDegrees) < 1) {
+    return { width: w, height: h }
+  }
   
-  // Ensure positive dimensions and don't exceed original
-  const finalWidth = Math.max(1, Math.min(originalWidth, Math.abs(inscribedWidth)))
-  const finalHeight = Math.max(1, Math.min(originalHeight, Math.abs(inscribedHeight)))
+  // Calculate the largest rectangle that fits inside the rotated image
+  // Using improved formula that accounts for the actual rotated bounds
+  let inscribedWidth, inscribedHeight
   
+  if (sin + cos <= 1) {
+    // For smaller rotation angles
+    inscribedWidth = w * cos + h * sin
+    inscribedHeight = w * sin + h * cos
+  } else {
+    // For larger rotation angles - use the standard inscribed formula but optimized
+    const denominator = cos * cos + sin * sin
+    inscribedWidth = Math.abs((w * cos - h * sin) / denominator)
+    inscribedHeight = Math.abs((h * cos - w * sin) / denominator)
+  }
+  
+  // Apply a more aggressive approach - use 95% of calculated size to eliminate borders
+  const aggressiveFactor = 0.98
+  const finalWidth = Math.floor(Math.min(originalWidth, inscribedWidth * aggressiveFactor))
+  const finalHeight = Math.floor(Math.min(originalHeight, inscribedHeight * aggressiveFactor))
+  
+  // Ensure minimum size
   return {
-    width: Math.floor(finalWidth),
-    height: Math.floor(finalHeight)
+    width: Math.max(10, finalWidth),
+    height: Math.max(10, finalHeight)
   }
 }
 
@@ -287,15 +375,26 @@ function analyzeEdgeAlpha(data, width, height, threshold) {
   }
 }
 
-// Try alpha-based trim
+// Try alpha-based trim with enhanced detection for white/transparent borders
 function tryAlphaTrim(data, width, height, threshold) {
   let minX = width, minY = height, maxX = -1, maxY = -1
   
-  // Scan all pixels for alpha content
+  // Enhanced scanning: look for both alpha content AND non-white pixels
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const alpha = data[(y * width + x) * 4 + 3]
-      if (alpha > threshold) {
+      const pixelIndex = (y * width + x) * 4
+      const r = data[pixelIndex]
+      const g = data[pixelIndex + 1]
+      const b = data[pixelIndex + 2]
+      const alpha = data[pixelIndex + 3]
+      
+      // Consider a pixel "content" if:
+      // 1. It has significant alpha (not transparent)
+      // 2. It's not white/near-white (to catch white borders)
+      const hasAlpha = alpha > threshold
+      const isNotWhite = (r < 250 || g < 250 || b < 250) // More aggressive white detection
+      
+      if (hasAlpha && (alpha < 255 || isNotWhite)) {
         minX = Math.min(minX, x)
         minY = Math.min(minY, y)
         maxX = Math.max(maxX, x)
@@ -305,15 +404,15 @@ function tryAlphaTrim(data, width, height, threshold) {
   }
   
   if (maxX === -1 || maxY === -1) {
-    return { success: false, reason: 'No alpha content found' }
+    return { success: false, reason: 'No content found' }
   }
   
   const trimWidth = maxX - minX + 1
   const trimHeight = maxY - minY + 1
   
-  // Verify this creates a meaningful reduction
+  // More lenient reduction threshold - even small improvements are worth it
   const reduction = 1 - (trimWidth * trimHeight) / (width * height)
-  if (reduction < 0.01) { // Less than 1% reduction
+  if (reduction < 0.005) { // Reduced from 1% to 0.5%
     return { success: false, reason: 'Insufficient reduction' }
   }
   
