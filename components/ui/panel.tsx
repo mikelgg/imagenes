@@ -13,15 +13,20 @@ interface PanelProps extends HTMLMotionProps<'div'> {
 
 const Panel = React.forwardRef<HTMLDivElement, PanelProps>(
   ({ children, className, animate = true, delay = 0, ...props }, ref) => {
-    const motionProps = animate ? {
-      initial: { opacity: 0, y: 10 },
-      animate: { opacity: 1, y: 0 },
-      transition: { 
-        duration: 0.28, 
-        delay,
-        ease: [0.25, 0.46, 0.45, 0.94] 
-      }
-    } : {}
+    if (!animate) {
+      return (
+        <div
+          ref={ref}
+          className={cn(
+            "bg-surface border border-border rounded-2xl p-6 shadow-surface",
+            className
+          )}
+          {...(props as any)}
+        >
+          {children}
+        </div>
+      )
+    }
 
     return (
       <motion.div
@@ -30,8 +35,14 @@ const Panel = React.forwardRef<HTMLDivElement, PanelProps>(
           "bg-surface border border-border rounded-2xl p-6 shadow-surface",
           className
         )}
-        {...motionProps}
-        {...props}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ 
+          duration: 0.28, 
+          delay,
+          ease: "easeOut"
+        }}
+        {...(props as any)}
       >
         {children}
       </motion.div>

@@ -25,8 +25,7 @@ const fadeUpItem = {
   hidden: { opacity: 0, y: 20 },
   show: { 
     opacity: 1, 
-    y: 0,
-    transition: { duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }
+    y: 0
   }
 }
 
@@ -43,6 +42,7 @@ export function EditorLayout({ leftPanel, rightPanel, className }: EditorLayoutP
         <motion.div 
           className="space-y-6"
           variants={fadeUpItem}
+          transition={{ duration: 0.28, ease: "easeOut" }}
         >
           {leftPanel}
         </motion.div>
@@ -51,6 +51,7 @@ export function EditorLayout({ leftPanel, rightPanel, className }: EditorLayoutP
         <motion.div 
           className="space-y-6"
           variants={fadeUpItem}
+          transition={{ duration: 0.28, ease: "easeOut" }}
         >
           {rightPanel}
         </motion.div>

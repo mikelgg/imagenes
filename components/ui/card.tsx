@@ -1,3 +1,5 @@
+"use client"
+
 import * as React from "react"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
@@ -9,26 +11,34 @@ const Card = React.forwardRef<
     delay?: number
   }
 >(({ className, animate = true, delay = 0, ...props }, ref) => {
-  const MotionDiv = animate ? motion.div : 'div'
-  const motionProps = animate ? {
-    initial: { opacity: 0, y: 10 },
-    animate: { opacity: 1, y: 0 },
-    transition: { 
-      duration: 0.28, 
-      delay,
-      ease: [0.25, 0.46, 0.45, 0.94] 
-    }
-  } : {}
+  if (!animate) {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "rounded-2xl border border-border bg-surface text-text-primary shadow-surface",
+          className
+        )}
+        {...props}
+      />
+    )
+  }
 
   return (
-    <MotionDiv
+    <motion.div
       ref={ref}
       className={cn(
         "rounded-2xl border border-border bg-surface text-text-primary shadow-surface",
         className
       )}
-      {...motionProps}
-      {...props}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ 
+        duration: 0.28, 
+        delay,
+        ease: "easeOut"
+      }}
+      {...(props as any)}
     />
   )
 })

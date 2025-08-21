@@ -64,7 +64,7 @@ export function ProcessingOptions({ options, onChange, disabled }: ProcessingOpt
           {rotationPresets.map((preset) => (
             <Button
               key={preset.value}
-              variant={options.rotation === preset.value ? 'default' : 'outline'}
+              variant={options.rotation === preset.value ? 'primary' : 'outline'}
               size="sm"
               onClick={() => onChange({ rotation: preset.value })}
               disabled={disabled}

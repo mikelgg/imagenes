@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Cpu, Shield, Zap, Globe } from 'lucide-react'

@@ -1,3 +1,5 @@
+"use client"
+
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -44,25 +46,35 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading = false, children, disabled, ...props }, ref) => {
-    const Comp = asChild ? Slot : motion.button
+    if (asChild) {
+      return (
+        <Slot
+          className={cn(buttonVariants({ variant, size, className }))}
+          ref={ref}
+          {...props}
+        >
+          {children}
+        </Slot>
+      )
+    }
     
     return (
-      <Comp
+      <motion.button
         className={cn(buttonVariants({ variant, size, className }))}
         disabled={disabled || loading}
-        whileHover={{ 
+        whileHover={disabled || loading ? {} : { 
           y: -1, 
           scale: 1.02,
           transition: { duration: 0.15, ease: "easeOut" }
         }}
-        whileTap={{ 
+        whileTap={disabled || loading ? {} : { 
           y: 1, 
           scale: 0.98,
           transition: { duration: 0.1, ease: "easeInOut" }
         }}
         ref={ref}
         aria-busy={loading}
-        {...props}
+        {...(props as any)}
       >
         {loading && (
           <motion.div
@@ -72,7 +84,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           />
         )}
         {children}
-      </Comp>
+      </motion.button>
     )
   }
 )
