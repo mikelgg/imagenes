@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { RotateCw, RotateCcw, RotateIcon, Plus, Minus } from 'lucide-react'
+import { RotateCw, RotateCcw, Rotate3D, Plus, Minus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
@@ -54,7 +54,7 @@ export function RotatePanel({ rotation, useGeometricCrop, onChange, disabled }: 
             disabled={disabled}
             className="flex-1"
           >
-            <RotateIcon className="h-4 w-4 mr-2" />
+            <Rotate3D className="h-4 w-4 mr-2" />
             180°
           </Button>
           <Button

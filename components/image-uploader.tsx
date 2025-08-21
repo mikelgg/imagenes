@@ -10,13 +10,15 @@ interface ImageUploaderProps {
   selectedFiles: File[]
   maxFiles?: number
   maxFileSize?: number // in bytes
+  compact?: boolean
 }
 
 export function ImageUploader({ 
   onFilesSelected, 
   selectedFiles, 
   maxFiles = 20,
-  maxFileSize = 10 * 1024 * 1024 // 10MB
+  maxFileSize = 10 * 1024 * 1024, // 10MB
+  compact = false
 }: ImageUploaderProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -103,7 +105,8 @@ export function ImageUploader({
       {/* Drop Zone */}
       <div
         className={cn(
-          "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
+          "border-2 border-dashed rounded-lg text-center transition-colors",
+          compact ? "p-4" : "p-8",
           isDragOver 
             ? "border-primary bg-primary/5" 
             : "border-muted-foreground/25 hover:border-muted-foreground/50",
@@ -113,13 +116,24 @@ export function ImageUploader({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-        <h3 className="text-lg font-semibold mb-2">
-          Drop images here or click to browse
-        </h3>
-        <p className="text-muted-foreground mb-4">
-          Support JPG, PNG, WEBP • Max {maxFiles} files • Max {formatFileSize(maxFileSize)} each
-        </p>
+        {!compact ? (
+          <>
+            <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">
+              Drop images here or click to browse
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              Support JPG, PNG, WEBP • Max {maxFiles} files • Max {formatFileSize(maxFileSize)} each
+            </p>
+          </>
+        ) : (
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <Upload className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              Añadir más imágenes
+            </span>
+          </div>
+        )}
         
         <input
           type="file"
@@ -127,12 +141,12 @@ export function ImageUploader({
           accept="image/jpeg,image/png,image/webp"
           onChange={handleFileSelect}
           className="hidden"
-          id="file-upload"
+          id={compact ? "file-upload-compact" : "file-upload"}
         />
         
-        <Button asChild variant="outline">
-          <label htmlFor="file-upload" className="cursor-pointer">
-            Choose Files
+        <Button asChild variant={compact ? "secondary" : "outline"} size={compact ? "sm" : "default"}>
+          <label htmlFor={compact ? "file-upload-compact" : "file-upload"} className="cursor-pointer">
+            {compact ? "Añadir" : "Choose Files"}
           </label>
         </Button>
       </div>
