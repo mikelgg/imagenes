@@ -431,7 +431,7 @@ async function processImage(img, options) {
     const isRotated = options.rotation !== 0
     const threshold = isRotated ? 0 : 0  // Siempre threshold 0 para mejor precisión
     
-    const autoCropResult = autoCropByAlpha(workingCanvas, threshold, isRotated)
+    const autoCropResult = autoCropByAlpha(workingCanvas, threshold, isRotated, options.rotation)
     
     if (autoCropResult.success) {
       const originalArea = workingCanvas.width * workingCanvas.height
