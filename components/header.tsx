@@ -1,52 +1,83 @@
 'use client'
 
-import { Camera, Moon, Sun } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { Camera, Download, Save, HelpCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { motion } from 'framer-motion'
 import Link from 'next/link'
 
-export function Header() {
-  const { theme, setTheme } = useTheme()
+interface HeaderProps {
+  onDownloadAll?: () => void
+  onSaveTemporary?: () => void
+  onHelp?: () => void
+  hasProcessedImages?: boolean
+}
 
+export function Header({ 
+  onDownloadAll, 
+  onSaveTemporary, 
+  onHelp,
+  hasProcessedImages = false 
+}: HeaderProps) {
   return (
-    <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4 py-4">
+    <motion.header 
+      className="border-b border-border bg-surface/95 backdrop-blur-sm"
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28 }}
+    >
+      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Camera className="h-6 w-6 text-primary" />
-            <span className="font-bold text-xl">Image Processor</span>
+          <Link href="/" className="flex items-center gap-3 group">
+            <motion.div
+              whileHover={{ rotate: 5, scale: 1.05 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Camera className="h-7 w-7 text-primary" />
+            </motion.div>
+            <div className="flex flex-col">
+              <span className="font-bold text-xl tracking-tighter text-text-primary">Image Processor</span>
+              <span className="text-xs text-text-muted font-medium">Geometric Crop Engine</span>
+            </div>
           </Link>
 
-          {/* Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
-            <Link 
-              href="/terms" 
-              className="text-muted-foreground hover:text-foreground transition-colors"
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3">
+            {hasProcessedImages && (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onSaveTemporary}
+                  className="hidden md:flex"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Guardar Temporal
+                </Button>
+                
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={onDownloadAll}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Descargar Todo
+                </Button>
+              </>
+            )}
+            
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onHelp}
+              className="text-text-muted hover:text-text-primary"
             >
-              Terms
-            </Link>
-            <Link 
-              href="/privacy" 
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Privacy
-            </Link>
-          </nav>
-
-          {/* Theme Toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="h-9 w-9"
-          >
-            <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">Toggle theme</span>
-          </Button>
+              <HelpCircle className="h-5 w-5" />
+              <span className="sr-only">Ayuda</span>
+            </Button>
+          </div>
         </div>
       </div>
-    </header>
+    </motion.header>
   )
 }

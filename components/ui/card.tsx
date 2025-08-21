@@ -1,26 +1,44 @@
 import * as React from "react"
+import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 const Card = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "rounded-xl border bg-card text-card-foreground shadow-sm",
-      className
-    )}
-    {...props}
-  />
-))
+  React.HTMLAttributes<HTMLDivElement> & {
+    animate?: boolean
+    delay?: number
+  }
+>(({ className, animate = true, delay = 0, ...props }, ref) => {
+  const MotionDiv = animate ? motion.div : 'div'
+  const motionProps = animate ? {
+    initial: { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 },
+    transition: { 
+      duration: 0.28, 
+      delay,
+      ease: [0.25, 0.46, 0.45, 0.94] 
+    }
+  } : {}
+
+  return (
+    <MotionDiv
+      ref={ref}
+      className={cn(
+        "rounded-2xl border border-border bg-surface text-text-primary shadow-surface",
+        className
+      )}
+      {...motionProps}
+      {...props}
+    />
+  )
+})
 Card.displayName = "Card"
 
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("flex flex-col space-y-1.5 p-6", className)} {...props} />
+  <div ref={ref} className={cn("flex flex-col space-y-2 p-6", className)} {...props} />
 ))
 CardHeader.displayName = "CardHeader"
 
@@ -30,7 +48,7 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={cn("font-semibold leading-none tracking-tight", className)}
+    className={cn("font-semibold leading-none tracking-tight text-text-primary", className)}
     {...props}
   />
 ))
@@ -42,7 +60,7 @@ const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-sm text-text-muted leading-relaxed", className)}
     {...props}
   />
 ))

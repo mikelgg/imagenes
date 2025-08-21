@@ -4,85 +4,117 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 210 100% 50%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 98%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 98%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 98%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 210 100% 50%;
-    --radius: 0.75rem;
+    /* Dark theme only - all variables point to dark theme values */
+    --font-inter-tight: 'Inter Tight', 'Inter', system-ui, sans-serif;
   }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 212.7 26.8% 83.9%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-  }
-}
-
-@layer base {
+  
   * {
     @apply border-border;
   }
+  
   body {
-    @apply bg-background text-foreground;
+    @apply bg-bg text-text-primary font-inter antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Typography improvements */
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+  }
+  
+  h1 {
+    @apply text-4xl font-bold tracking-tighter;
+  }
+  
+  h2 {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  
+  h3 {
+    @apply text-xl font-semibold;
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - Dark theme */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-muted;
+  @apply bg-surface;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/30 rounded-md;
+  @apply bg-text-muted/30 rounded-full;
+  transition: background-color 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/50;
+  @apply bg-text-muted/50;
+}
+
+/* Focus styles */
+.focus-visible {
+  @apply outline-none ring-2 ring-cyan-400/40 ring-offset-2 ring-offset-bg;
 }
 
 /* Drag and drop styles */
 .drag-over {
-  @apply ring-2 ring-primary ring-offset-2 bg-primary/5;
+  @apply ring-2 ring-primary ring-offset-2 ring-offset-bg bg-primary/10 border-primary/30;
+  animation: pulse-border 1s ease-in-out infinite;
 }
 
 .drag-active {
-  @apply ring-2 ring-primary ring-offset-2 bg-primary/10;
+  @apply ring-2 ring-primary ring-offset-2 ring-offset-bg bg-primary/15 border-primary/50;
+}
+
+@keyframes pulse-border {
+  0%, 100% { 
+    border-color: rgba(6, 182, 212, 0.3); 
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.3);
+  }
+  50% { 
+    border-color: rgba(6, 182, 212, 0.6); 
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.6);
+  }
+}
+
+/* Skeleton loading animation */
+.skeleton {
+  @apply bg-muted animate-pulse;
+  background: linear-gradient(
+    90deg,
+    theme(colors.muted) 25%, 
+    theme(colors.surface) 50%, 
+    theme(colors.muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Image preview styles */
+.image-preview {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.image-preview:hover {
+  transform: scale(1.02);
+}
+
+/* Glow effects */
+.glow {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+}
+
+.glow-sm {
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
 }
 
 /* Loading animation */

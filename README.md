@@ -26,15 +26,76 @@ Procesa hasta 20 imágenes con rotación automática, recorte inteligente y redi
 
 ### 🌟 **UX Moderna**
 - 🎯 **Drag & Drop** profesional para hasta 20 imágenes
-- 🌙 **Dark/Light mode** automático
-- 👀 **Vista previa** en tiempo real con todas las opciones
+- 🌙 **Tema oscuro permanente** con diseño minimalista profesional
+- 👀 **Vista previa comparativa** con slider antes/después interactivo
 - 📦 **Descarga ZIP** con nomenclatura secuencial perfecta
-- ⚡ **Progreso en tiempo real** sin bloquear la UI
+- ⚡ **Progreso en tiempo real** con micro-animaciones fluidas
+- ⌨️ **Atajos de teclado** para rotación y acciones rápidas
 
 ### 🚀 **Performance**
 - ⚡ **Web Workers** - procesamiento sin lag
 - 🔧 **Canvas API** optimizado para alta calidad
 - 💾 **Gestión de memoria** eficiente para archivos grandes
+
+---
+
+## 🎨 Diseño UI/UX
+
+### ✨ **Filosofía de Diseño**
+- **Minimalismo profesional**: Estética limpia y enfocada
+- **Tema oscuro permanente**: Optimizado para trabajo prolongado
+- **Tipografía geométrica**: Inter Tight para máxima legibilidad
+
+### 🌈 **Paleta de Colores**
+```css
+/* Base Colors */
+--bg: #0B0F19          /* Fondo principal casi negro */
+--surface: #111827      /* Superficies (cards, panels) */
+--muted: #1F2937        /* Elementos deshabilitados */
+--border: rgba(255,255,255,0.06)  /* Bordes sutiles */
+
+/* Text Colors */
+--text-primary: #E5E7EB  /* Texto principal */
+--text-muted: #9CA3AF    /* Texto secundario */
+
+/* Accent Gradient */
+--accent-from: #7C3AED   /* Violeta */
+--accent-to: #06B6D4     /* Cyan */
+```
+
+### 🎬 **Micro-Animaciones**
+- **Framer Motion**: Transiciones fluidas y naturales
+- **Hover/Press**: Feedback táctil en botones (scale, shadow, translate)
+- **Stagger**: Aparición secuencial de elementos con 40ms delay
+- **Easing**: Curva cubic-bezier optimizada para UI ([0.25, 0.46, 0.45, 0.94])
+
+### ⌨️ **Atajos de Teclado**
+- `R` / `L`: Rotar ±1°
+- `Shift + R` / `Shift + L`: Rotar ±5°
+- `Ctrl/Cmd + S`: Descargar resultados
+- `Tab` / `Shift + Tab`: Navegación por controles
+
+### 📱 **Diseño Responsivo**
+- **Mobile First**: Layout de columna única en pantallas < 1024px
+- **Desktop**: Dos columnas (herramientas + preview)
+- **Containers**: Max-width 1280px con padding adaptativo
+
+### 🎯 **Componentes UI**
+
+#### Button Variants
+```tsx
+<Button variant="primary" size="xl">     // Gradiente principal con glow
+<Button variant="secondary" size="lg">   // Superficie con borde
+<Button variant="ghost" size="default">  // Transparente con hover
+<Button variant="outline" size="sm">     // Solo borde
+```
+
+#### Panel System
+```tsx
+<Panel delay={0.1}>                      // Card animado con retraso
+<EditorLayout leftPanel={} rightPanel={}/> // Layout dos columnas
+<PreviewCompare beforeImage={} afterImage={}/> // Comparador interactivo
+```
 
 ---
 
