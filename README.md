@@ -15,9 +15,10 @@ Procesa hasta 20 imágenes con rotación automática, recorte inteligente y redi
 - 🛡️ **Cumple GDPR/CCPA** - transparencia total
 
 ### 🎨 **Procesamiento iPhone-Style**
-- 🔄 **Rotación inteligente mejorada** con auto-crop avanzado (elimina bordes completamente)
-- 🆕 **Algoritmo de detección de esquinas** - identifica y elimina píxeles de interpolación
-- 🆕 **Crop rectangular perfecto** - garantiza imágenes sin bordes blancos/transparentes
+- 🔄 **Rotación con recorte geométrico determinista** - elimina bordes 100% garantizado
+- 🆕 **Algoritmo geométrico** - cálculo matemático preciso del rectángulo inscrito máximo
+- 🆕 **Cero escaneo de píxeles** - basado en geometría pura, más rápido y determinista
+- 🛡️ **Margen de seguridad configurable** - 1-2px ajustable para casos edge
 - ✂️ **Recorte lateral opcional** después de rotación  
 - 📏 **Redimensionado** con conservación de proporción
 - 🎯 **Multi-formato** (JPEG, PNG, WebP) con control de calidad
@@ -37,20 +38,31 @@ Procesa hasta 20 imágenes con rotación automática, recorte inteligente y redi
 
 ---
 
-## 🧠 Algoritmo de Auto-Crop Mejorado
+## 🧠 Algoritmo de Recorte Geométrico Determinista
 
-### ✨ Nuevas Características
-- **Threshold Alpha configurable**: Usa threshold 12 para rotaciones (elimina halo de antialiasing)
-- **Eliminación de píxeles interpolados**: Identifica y descarta píxeles generados por interpolación
-- **Overcrop opcional**: Permite recortar 1-2 píxeles adicionales para eliminar halo residual
-- **Compensación de márgenes**: Maneja correctamente los márgenes añadidos durante la rotación
-- **Pipeline optimizado**: Orden correcto de operaciones (rotación → auto-recorte → exportación)
+### ✨ Características Revolucionarias
+- **Recorte geométrico puro**: Sin escaneo de píxeles - cálculo matemático directo
+- **Rectángulo inscrito máximo**: Fórmula matemática que garantiza el área máxima sin bordes
+- **Margen de seguridad "shave"**: 0-5px configurable para eliminación total de bordes
+- **Determinista 100%**: Misma entrada = misma salida siempre
+- **Zero bordes garantizado**: Para PNG y JPEG en cualquier ángulo de rotación
+- **Pipeline optimizado**: Decodificar → Rotar → Calcular → Recortar → Exportar
 
-### 🔧 Criterios de Detección
-1. **Transparencia**: Píxeles con alpha ≤ threshold (12 para rotaciones)
-2. **Colores interpolados**: Detección de tonos beige/blanquecinos típicos de rotación
-3. **Proximidad a bordes**: Análisis contextual de píxeles cerca de los bordes
-4. **Densidad de contenido**: Evaluación de regiones con baja densidad de píxeles válidos
+### 🔧 Fórmula Matemática
+```javascript
+// Para un rectángulo (w0, h0) rotado θ grados:
+const factor = Math.min(
+  w0 / (w0 * cos(θ) + h0 * sin(θ)),
+  h0 / (w0 * sin(θ) + h0 * cos(θ))
+)
+inscribed_w = w0 * factor - (shave * 2)
+inscribed_h = h0 * factor - (shave * 2)
+```
+
+### ⚙️ Configuración
+- **Modo geométrico**: Habilitado por defecto (recomendado)
+- **Margen de seguridad**: 1px por defecto (0-5px ajustable)
+- **Modo legacy**: Alpha-based disponible para compatibilidad
 
 ### 🧪 Modo Debug
 - **Overlay de bounding box**: Visualiza el área recortada en verde

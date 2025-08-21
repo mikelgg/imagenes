@@ -911,32 +911,24 @@ function calculateGeometricInscribedRectangle(originalWidth, originalHeight, rot
   const cos = Math.abs(Math.cos(angleRad))
   const sin = Math.abs(Math.sin(angleRad))
   
-  // Fórmula matemática correcta del rectángulo máximo inscrito axis-aligned
-  // dentro de un rectángulo de dimensiones (w0, h0) rotado por ángulo θ
+  // FÓRMULA MATEMÁTICA CORRECTA del rectángulo inscrito máximo
+  // Basada en la implementación legacy que funcionaba correctamente
+  let inscribedWidth, inscribedHeight
   
-  // El rectángulo inscrito más grande tiene dimensiones:
-  // factor = min(w0/(w0*cos + h0*sin), h0/(w0*sin + h0*cos))
-  // inscribed_w = w0 * factor
-  // inscribed_h = h0 * factor
-  
-  const rotatedBoundingWidth = originalWidth * cos + originalHeight * sin
-  const rotatedBoundingHeight = originalWidth * sin + originalHeight * cos
-  
-  if (rotatedBoundingWidth === 0 || rotatedBoundingHeight === 0) {
+  if (cos + sin === 0) {
     // Caso edge: evitar división por cero
     inscribedWidth = Math.min(originalWidth, originalHeight) * 0.7
     inscribedHeight = Math.min(originalWidth, originalHeight) * 0.7
   } else {
-    // Calcular factor de escala que garantiza que el rectángulo inscrito
-    // cabe completamente dentro del rectángulo rotado
-    const scaleFactor = Math.min(
-      originalWidth / rotatedBoundingWidth,
-      originalHeight / rotatedBoundingHeight
+    // Factor de escala que garantiza que el rectángulo cabe dentro del rotado
+    const factor = Math.min(
+      originalWidth / (originalWidth * cos + originalHeight * sin),
+      originalHeight / (originalWidth * sin + originalHeight * cos)
     )
     
-    // Aplicar factor de escala a las dimensiones originales
-    inscribedWidth = originalWidth * scaleFactor
-    inscribedHeight = originalHeight * scaleFactor
+    // Aplicar factor a las dimensiones originales
+    inscribedWidth = originalWidth * factor
+    inscribedHeight = originalHeight * factor
     
     // Verificación de sanidad: nunca debe exceder las dimensiones originales
     inscribedWidth = Math.min(inscribedWidth, originalWidth)
