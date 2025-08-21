@@ -70,7 +70,9 @@ export function autoCropByAlpha(
       }
     }
 
-    // Para imágenes rotadas, aplicar la fórmula matemática del legacy (más efectiva)
+    // NOTA: La función calculateInscribedRectangle ahora está obsoleta
+    // El nuevo pipeline geométrico está implementado en el worker
+    // Esta función se mantiene para compatibilidad con alpha-based cropping
     if (isRotated && rotationAngle) {
       // Usar directamente la fórmula matemática que funciona en el script Python
       boundingBox = calculateInscribedRectangle(sourceCanvas.width, sourceCanvas.height, rotationAngle)

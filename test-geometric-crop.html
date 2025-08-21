@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Geometric Crop Implementation</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .result { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        .success { background: #d4edda; border-left: 4px solid #28a745; }
+        .error { background: #f8d7da; border-left: 4px solid #dc3545; }
+        canvas { border: 1px solid #000; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Geometric Crop Implementation Test</h1>
+    <p>This tests the new geometric deterministic cropping algorithm.</p>
+
+    <div class="test-section">
+        <h2>Test 1: Formula Validation</h2>
+        <div id="formula-test"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Edge Cases</h2>
+        <div id="edge-cases-test"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Visual Verification</h2>
+        <input type="file" id="image-input" accept="image/*">
+        <div>
+            Rotation: <input type="range" id="rotation-slider" min="0" max="360" value="45"> 
+            <span id="rotation-value">45</span>°
+        </div>
+        <div>
+            Shave pixels: <input type="range" id="shave-slider" min="0" max="5" value="1"> 
+            <span id="shave-value">1</span>px
+        </div>
+        <div id="visual-test"></div>
+    </div>
+
+    <script>
+        // Geometric inscribed rectangle calculation (copied from worker)
+        function calculateGeometricInscribedRectangle(originalWidth, originalHeight, rotationAngle, canvasWidth, canvasHeight, shavePixels = 1) {
+            console.log('Calculating geometric rectangle:', {
+                original: `${originalWidth}x${originalHeight}`,
+                canvas: `${canvasWidth}x${canvasHeight}`, 
+                angle: rotationAngle,
+                shave: shavePixels
+            });
+            
+            const normalizedAngle = Math.abs(rotationAngle % 180);
+            if (normalizedAngle === 0) {
+                const x = Math.floor((canvasWidth - originalWidth) / 2) + shavePixels;
+                const y = Math.floor((canvasHeight - originalHeight) / 2) + shavePixels;
+                const width = Math.floor(originalWidth - (shavePixels * 2));
+                const height = Math.floor(originalHeight - (shavePixels * 2));
+                
+                return {
+                    x: Math.max(0, x),
+                    y: Math.max(0, y),
+                    width: Math.max(1, width),
+                    height: Math.max(1, height)
+                };
+            }
+            
+            const angleRad = (normalizedAngle * Math.PI) / 180;
+            const cos = Math.abs(Math.cos(angleRad));
+            const sin = Math.abs(Math.sin(angleRad));
+            
+            const rotatedBoundingWidth = originalWidth * cos + originalHeight * sin;
+            const rotatedBoundingHeight = originalWidth * sin + originalHeight * cos;
+            
+            let inscribedWidth, inscribedHeight;
+            
+            if (rotatedBoundingWidth === 0 || rotatedBoundingHeight === 0) {
+                inscribedWidth = Math.min(originalWidth, originalHeight) * 0.7;
+                inscribedHeight = Math.min(originalWidth, originalHeight) * 0.7;
+            } else {
+                const scaleFactor = Math.min(
+                    originalWidth / rotatedBoundingWidth,
+                    originalHeight / rotatedBoundingHeight
+                );
+                
+                inscribedWidth = originalWidth * scaleFactor;
+                inscribedHeight = originalHeight * scaleFactor;
+                
+                inscribedWidth = Math.min(inscribedWidth, originalWidth);
+                inscribedHeight = Math.min(inscribedHeight, originalHeight);
+            }
+            
+            inscribedWidth = Math.floor(inscribedWidth);
+            inscribedHeight = Math.floor(inscribedHeight);
+            
+            inscribedWidth = Math.floor(inscribedWidth - (shavePixels * 2));
+            inscribedHeight = Math.floor(inscribedHeight - (shavePixels * 2));
+            
+            inscribedWidth = Math.max(1, inscribedWidth);
+            inscribedHeight = Math.max(1, inscribedHeight);
+            
+            const x = Math.floor((canvasWidth - inscribedWidth) / 2);
+            const y = Math.floor((canvasHeight - inscribedHeight) / 2);
+            
+            const result = {
+                x: Math.max(0, x),
+                y: Math.max(0, y),
+                width: inscribedWidth,
+                height: inscribedHeight
+            };
+            
+            console.log('Geometric result:', result);
+            return result;
+        }
+
+        // Test 1: Formula validation
+        function testFormula() {
+            const tests = [
+                { w: 100, h: 100, angle: 45, expected: "should reduce size significantly" },
+                { w: 200, h: 100, angle: 30, expected: "should handle rectangular images" },
+                { w: 100, h: 200, angle: 60, expected: "should handle tall images" },
+                { w: 100, h: 100, angle: 0, expected: "should preserve size (minus shave)" },
+                { w: 100, h: 100, angle: 90, expected: "should swap dimensions" }
+            ];
+
+            const results = tests.map(test => {
+                const canvasW = test.w * 1.5; // Simulate expanded canvas
+                const canvasH = test.h * 1.5;
+                const result = calculateGeometricInscribedRectangle(test.w, test.h, test.angle, canvasW, canvasH, 1);
+                const reduction = 1 - (result.width * result.height) / (test.w * test.h);
+                
+                return {
+                    ...test,
+                    result,
+                    reduction: Math.round(reduction * 100),
+                    valid: result.width > 0 && result.height > 0 && result.width <= test.w && result.height <= test.h
+                };
+            });
+
+            const formulaDiv = document.getElementById('formula-test');
+            formulaDiv.innerHTML = results.map(r => 
+                `<div class="result ${r.valid ? 'success' : 'error'}">
+                    ${r.w}x${r.h} @ ${r.angle}°: ${r.result.width}x${r.result.height} 
+                    (${r.reduction}% reduction) - ${r.expected}
+                    ${r.valid ? '✓' : '✗'}
+                </div>`
+            ).join('');
+        }
+
+        // Test 2: Edge cases
+        function testEdgeCases() {
+            const edgeCases = [
+                { w: 1, h: 1, angle: 45, desc: "Minimum size" },
+                { w: 1000, h: 1, angle: 30, desc: "Extreme aspect ratio" },
+                { w: 100, h: 100, angle: 180, desc: "180 degree rotation" },
+                { w: 100, h: 100, angle: 270, desc: "270 degree rotation" },
+                { w: 100, h: 100, angle: -45, desc: "Negative angle" }
+            ];
+
+            const results = edgeCases.map(test => {
+                try {
+                    const canvasW = Math.max(test.w * 2, 100);
+                    const canvasH = Math.max(test.h * 2, 100);
+                    const result = calculateGeometricInscribedRectangle(test.w, test.h, test.angle, canvasW, canvasH, 1);
+                    return {
+                        ...test,
+                        result,
+                        success: true,
+                        valid: result.width > 0 && result.height > 0
+                    };
+                } catch (error) {
+                    return {
+                        ...test,
+                        error: error.message,
+                        success: false,
+                        valid: false
+                    };
+                }
+            });
+
+            const edgeDiv = document.getElementById('edge-cases-test');
+            edgeDiv.innerHTML = results.map(r => 
+                `<div class="result ${r.success && r.valid ? 'success' : 'error'}">
+                    ${r.desc}: ${r.success ? `${r.result.width}x${r.result.height}` : r.error}
+                    ${r.success && r.valid ? '✓' : '✗'}
+                </div>`
+            ).join('');
+        }
+
+        // Test 3: Visual verification
+        function setupVisualTest() {
+            const imageInput = document.getElementById('image-input');
+            const rotationSlider = document.getElementById('rotation-slider');
+            const rotationValue = document.getElementById('rotation-value');
+            const shaveSlider = document.getElementById('shave-slider');
+            const shaveValue = document.getElementById('shave-value');
+            const visualDiv = document.getElementById('visual-test');
+
+            let currentImage = null;
+
+            rotationSlider.addEventListener('input', () => {
+                rotationValue.textContent = rotationSlider.value;
+                if (currentImage) processImage();
+            });
+
+            shaveSlider.addEventListener('input', () => {
+                shaveValue.textContent = shaveSlider.value;
+                if (currentImage) processImage();
+            });
+
+            imageInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            currentImage = img;
+                            processImage();
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+
+            function processImage() {
+                if (!currentImage) return;
+
+                const rotation = parseInt(rotationSlider.value);
+                const shave = parseInt(shaveSlider.value);
+                
+                // Simulate the rotation canvas expansion
+                const angleRad = (Math.abs(rotation) * Math.PI) / 180;
+                const cos = Math.abs(Math.cos(angleRad));
+                const sin = Math.abs(Math.sin(angleRad));
+                
+                const expandedWidth = Math.ceil(currentImage.width * cos + currentImage.height * sin);
+                const expandedHeight = Math.ceil(currentImage.width * sin + currentImage.height * cos);
+                
+                const margin = Math.max(20, Math.min(currentImage.width, currentImage.height) * 0.05);
+                const canvasWidth = expandedWidth + margin * 2;
+                const canvasHeight = expandedHeight + margin * 2;
+
+                // Calculate geometric crop
+                const cropRect = calculateGeometricInscribedRectangle(
+                    currentImage.width, 
+                    currentImage.height, 
+                    rotation, 
+                    canvasWidth, 
+                    canvasHeight, 
+                    shave
+                );
+
+                visualDiv.innerHTML = `
+                    <div class="result">
+                        <h4>Calculation Results:</h4>
+                        <p><strong>Original:</strong> ${currentImage.width}x${currentImage.height}</p>
+                        <p><strong>Expanded Canvas:</strong> ${canvasWidth}x${canvasHeight}</p>
+                        <p><strong>Inscribed Rectangle:</strong> ${cropRect.width}x${cropRect.height}</p>
+                        <p><strong>Position:</strong> (${cropRect.x}, ${cropRect.y})</p>
+                        <p><strong>Reduction:</strong> ${Math.round((1 - (cropRect.width * cropRect.height) / (currentImage.width * currentImage.height)) * 100)}%</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Run tests
+        document.addEventListener('DOMContentLoaded', () => {
+            testFormula();
+            testEdgeCases();
+            setupVisualTest();
+        });
+    </script>
+</body>
+</html>

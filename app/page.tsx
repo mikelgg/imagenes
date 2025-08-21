@@ -23,6 +23,8 @@ interface ProcessingOptions {
   format: 'jpeg' | 'png' | 'webp'
   preserveExif: boolean
   projectName: string
+  shavePixels: number
+  useGeometricCrop: boolean
 }
 
 interface ProcessedImage {
@@ -47,7 +49,9 @@ export default function HomePage() {
     quality: 90,
     format: 'jpeg',
     preserveExif: true,
-    projectName: 'processed-images'
+    projectName: 'processed-images',
+    shavePixels: 1,
+    useGeometricCrop: true
   })
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)

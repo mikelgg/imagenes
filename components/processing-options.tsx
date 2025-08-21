@@ -22,6 +22,8 @@ interface ProcessingOptionsProps {
     format: 'jpeg' | 'png' | 'webp'
     preserveExif: boolean
     projectName: string
+    shavePixels: number
+    useGeometricCrop: boolean
   }
   onChange: (options: Partial<ProcessingOptionsProps['options']>) => void
   disabled?: boolean
@@ -231,6 +233,40 @@ export function ProcessingOptions({ options, onChange, disabled }: ProcessingOpt
             disabled={disabled}
           />
           <Label htmlFor="preserve-exif">Preserve EXIF metadata</Label>
+        </div>
+      </div>
+
+      {/* Geometric Cropping Settings */}
+      <div className="space-y-3">
+        <Label className="flex items-center gap-2">
+          <Crop className="h-4 w-4" />
+          Auto-Crop Settings
+        </Label>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="use-geometric-crop"
+            checked={options.useGeometricCrop}
+            onCheckedChange={(checked) => onChange({ useGeometricCrop: checked as boolean })}
+            disabled={disabled}
+          />
+          <Label htmlFor="use-geometric-crop">Use geometric cropping (eliminates all borders)</Label>
+        </div>
+        
+        <div className="space-y-2">
+          <Label htmlFor="shave-pixels">Safety margin: {options.shavePixels}px</Label>
+          <Slider
+            id="shave-pixels"
+            value={[options.shavePixels]}
+            onValueChange={([value]) => onChange({ shavePixels: value })}
+            max={5}
+            min={0}
+            step={1}
+            disabled={disabled || !options.useGeometricCrop}
+          />
+          <p className="text-xs text-muted-foreground">
+            Extra pixels to remove from edges (0-5px). Higher values ensure zero borders but reduce image size more.
+          </p>
         </div>
       </div>
     </div>

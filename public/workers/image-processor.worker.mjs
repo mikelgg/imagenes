@@ -2,6 +2,100 @@
 // Procesamiento de imágenes con auto-recorte inteligente
 
 /**
+ * Auto-recorte geométrico determinista (NUEVO)
+ * Reemplaza el recorte por alpha con un recorte geométrico preciso
+ * basado en el rectángulo máximo inscrito
+ */
+function autoCropGeometric(input, rotationAngle, originalWidth, originalHeight, shavePixels = 1) {
+  try {
+    devLog('🎯 Iniciando auto-recorte geométrico determinista', {
+      rotation: rotationAngle,
+      original: `${originalWidth}x${originalHeight}`,
+      shave: shavePixels
+    })
+    
+    // Crear canvas temporal si la entrada es ImageBitmap
+    let sourceCanvas
+    
+    if (input instanceof ImageBitmap) {
+      sourceCanvas = new OffscreenCanvas(input.width, input.height)
+      const ctx = sourceCanvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('No se pudo obtener contexto 2D')
+      }
+      ctx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height)
+      ctx.drawImage(input, 0, 0)
+    } else {
+      sourceCanvas = input
+    }
+
+    // Calcular rectángulo inscrito usando geometría pura (no píxeles)
+    const boundingBox = calculateGeometricInscribedRectangle(
+      originalWidth, 
+      originalHeight, 
+      rotationAngle,
+      sourceCanvas.width,
+      sourceCanvas.height,
+      shavePixels
+    )
+    
+    // Crear canvas recortado
+    const croppedCanvas = new OffscreenCanvas(boundingBox.width, boundingBox.height)
+    const croppedCtx = croppedCanvas.getContext('2d')
+    if (!croppedCtx) {
+      throw new Error('No se pudo crear contexto para canvas recortado')
+    }
+
+    // Copiar solo la región del rectángulo inscrito
+    croppedCtx.clearRect(0, 0, boundingBox.width, boundingBox.height)
+    croppedCtx.drawImage(
+      sourceCanvas,
+      boundingBox.x, boundingBox.y, boundingBox.width, boundingBox.height,
+      0, 0, boundingBox.width, boundingBox.height
+    )
+
+    const reduction = 1 - (boundingBox.width * boundingBox.height) / (sourceCanvas.width * sourceCanvas.height)
+
+    return {
+      success: true,
+      boundingBox,
+      canvas: croppedCanvas,
+      debugInfo: {
+        originalSize: `${sourceCanvas.width}x${sourceCanvas.height}`,
+        croppedSize: `${boundingBox.width}x${boundingBox.height}`,
+        reduction: `${Math.round(reduction * 100)}%`,
+        rotationAngle,
+        shavePixels,
+        method: 'geometric_deterministic'
+      }
+    }
+    
+  } catch (error) {
+    devLog('❌ Error en auto-recorte geométrico:', error)
+    
+    // Fallback seguro - devolver canvas original
+    let fallbackCanvas
+    if (input instanceof ImageBitmap) {
+      fallbackCanvas = new OffscreenCanvas(input.width, input.height)
+      const fallbackCtx = fallbackCanvas.getContext('2d')
+      if (fallbackCtx) {
+        fallbackCtx.clearRect(0, 0, input.width, input.height)
+        fallbackCtx.drawImage(input, 0, 0)
+      }
+    } else {
+      fallbackCanvas = input
+    }
+      
+    return {
+      success: false,
+      boundingBox: { x: 0, y: 0, width: fallbackCanvas.width, height: fallbackCanvas.height },
+      canvas: fallbackCanvas,
+      debugInfo: { error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }
+}
+
+/**
  * Auto-recorte con compensación de márgenes para imágenes rotadas
  * Maneja correctamente los márgenes añadidos durante la rotación
  */
@@ -514,11 +608,17 @@ async function processImage(img, options) {
       throw new Error('OffscreenCanvas no disponible en este entorno')
     }
     
-    devLog('🚀 Iniciando pipeline de procesamiento', {
+    const pipelineType = options.useGeometricCrop !== false ? 'GEOMÉTRICO' : 'ALPHA'
+    devLog(`🚀 Iniciando pipeline de procesamiento ${pipelineType}`, {
       dimensions: `${img.width}x${img.height}`,
       rotation: options.rotation,
       format: options.format,
-      pipeline: 'rotar → autoCropByAlpha → recorte → resize → exportar'
+      pipeline: options.useGeometricCrop !== false 
+        ? 'rotar → autoCropGeometric → recorte → resize → exportar'
+        : 'rotar → autoCropByAlpha → recorte → resize → exportar',
+      improvements: options.useGeometricCrop !== false 
+        ? 'Sin escaneo alpha, recorte determinista, cero bordes'
+        : 'Escaneo alpha tradicional (puede dejar bordes)'
     })
     
     let workingCanvas
@@ -537,22 +637,48 @@ async function processImage(img, options) {
      }
      timer.end('rotate')
 
-    // PASO 2: Auto-recorte mejorado (SIEMPRE aplicar)
-    timer.start('autoCropByAlpha')
+    // PASO 2: Auto-recorte (geométrico o alpha según configuración)
+    const isRotated = options.rotation !== 0
+    const shavePixels = options.shavePixels || 1  // Configurable: 1-2px de margen de seguridad
+    const useGeometric = options.useGeometricCrop !== false  // Por defecto: true
     
-         // Para rotaciones, usar threshold apropiado para eliminar halo de antialiasing
-     const isRotated = options.rotation !== 0
-     const threshold = isRotated ? 12 : 0  // Threshold 12 para eliminar halo de antialiasing en rotaciones
+    let autoCropResult
     
-         // Auto-recorte mejorado con threshold apropiado
-     let autoCropResult
-     if (isRotated) {
-       // Para rotaciones: usar auto-crop con threshold 12 y compensar márgenes
-       autoCropResult = autoCropByAlphaWithMarginCompensation(workingCanvas, threshold, options.rotation, img.width, img.height)
-     } else {
-       // Para imágenes sin rotación: usar el auto-crop normal
-       autoCropResult = autoCropByAlpha(workingCanvas, threshold)
-     }
+    if (useGeometric) {
+      // NUEVO: Recorte geométrico determinista (elimina todos los bordes)
+      timer.start('autoCropGeometric')
+      
+      devLog('🔧 Pipeline de recorte GEOMÉTRICO seleccionado', {
+        method: 'geometric_deterministic',
+        isRotated,
+        shavePixels,
+        disableAlphaScan: true
+      })
+      
+      // Aplicar recorte geométrico para rotaciones y no rotaciones
+      autoCropResult = autoCropGeometric(workingCanvas, options.rotation, img.width, img.height, shavePixels)
+      
+    } else {
+      // LEGACY: Recorte por alpha (mantener para compatibilidad)
+      timer.start('autoCropByAlpha')
+      
+      const threshold = isRotated ? 12 : 0  // Threshold 12 para eliminar halo de antialiasing en rotaciones
+      
+      devLog('🔧 Pipeline de recorte ALPHA seleccionado (legacy)', {
+        method: 'alpha_based',
+        isRotated,
+        threshold,
+        warning: 'Puede dejar bordes residuales'
+      })
+      
+      if (isRotated) {
+        // Para rotaciones: usar auto-crop con threshold 12 y compensar márgenes
+        autoCropResult = autoCropByAlphaWithMarginCompensation(workingCanvas, threshold, options.rotation, img.width, img.height)
+      } else {
+        // Para imágenes sin rotación: usar el auto-crop normal
+        autoCropResult = autoCropByAlpha(workingCanvas, threshold)
+      }
+    }
     
     if (autoCropResult.success) {
       const originalArea = workingCanvas.width * workingCanvas.height
@@ -560,29 +686,39 @@ async function processImage(img, options) {
       const reductionPercentage = ((originalArea - croppedArea) / originalArea) * 100
       
       workingCanvas = autoCropResult.canvas || workingCanvas
-      devLog('✅ Auto-recorte exitoso', {
+      const methodName = useGeometric ? 'geométrico' : 'alpha'
+      devLog(`✅ Auto-recorte ${methodName} exitoso`, {
         ...autoCropResult.debugInfo,
         boundingBox: autoCropResult.boundingBox,
         reduction: `${reductionPercentage.toFixed(1)}%`,
         wasRotated: isRotated
       })
       
-             // Si la reducción es significativa después de rotación, es buena señal
-       if (isRotated && reductionPercentage > 5) {
-         devLog('🎯 Esquinas de rotación eliminadas exitosamente usando fórmula legacy', { 
+      // Verificación específica para recorte geométrico
+      if (useGeometric && isRotated && reductionPercentage > 1) {
+         devLog('🎯 Bordes de rotación eliminados completamente con geometría', { 
            reduction: `${reductionPercentage.toFixed(1)}%`,
-           method: 'legacy_math_formula'
+           method: 'geometric_deterministic',
+           zeroBorders: true
          })
        }
     } else {
-      devLog('⚠️ Auto-recorte falló, usando imagen original', autoCropResult.debugInfo)
+      const methodName = useGeometric ? 'geométrico' : 'alpha'
+      devLog(`⚠️ Auto-recorte ${methodName} falló, usando imagen original`, autoCropResult.debugInfo)
     }
     
     debugInfo.autoCrop = {
       ...autoCropResult.debugInfo,
-      wasRotated: isRotated
+      wasRotated: isRotated,
+      method: useGeometric ? 'geometric' : 'alpha'
     }
-         timer.end('autoCropByAlpha')
+    
+    // Finalizar timer según el método usado
+    if (useGeometric) {
+      timer.end('autoCropGeometric')
+    } else {
+      timer.end('autoCropByAlpha')
+    }
      
      // Modo debug: crear visualización de máscara alpha y bbox
      if (DEBUG_MODE && options.debugMode) {
@@ -734,40 +870,110 @@ function createCanvasFromImageBitmap(imageBitmap) {
 }
 
 /**
- * Calcula el rectángulo inscrito más grande usando la fórmula matemática exacta del legacy
- * Esta es la misma lógica que funciona correctamente en el script Python
+ * Recorte geométrico determinista: calcula el rectángulo máximo inscrito 
+ * dentro del rectángulo original rotado por un ángulo θ
+ * 
+ * @param {number} originalWidth - Ancho original de la imagen (w0)
+ * @param {number} originalHeight - Alto original de la imagen (h0) 
+ * @param {number} rotationAngle - Ángulo de rotación en grados
+ * @param {number} canvasWidth - Ancho del canvas expandido donde está la imagen rotada
+ * @param {number} canvasHeight - Alto del canvas expandido donde está la imagen rotada
+ * @param {number} shavePixels - Margen de seguridad en píxeles (1-2px por defecto)
+ * @returns {Object} Coordenadas del rectángulo inscrito en el sistema del canvas expandido
  */
-function calculateInscribedRectangle(width, height, rotationAngle) {
-  // Para rotaciones que no son múltiplos de 90°, usar la fórmula matemática exacta del legacy
-  const angleRad = Math.abs(rotationAngle * Math.PI / 180)
-  const cosA = Math.abs(Math.cos(angleRad))
-  const sinA = Math.abs(Math.sin(angleRad))
+function calculateGeometricInscribedRectangle(originalWidth, originalHeight, rotationAngle, canvasWidth, canvasHeight, shavePixels = 1) {
+  devLog('🔢 Calculando rectángulo inscrito geométrico', {
+    original: `${originalWidth}x${originalHeight}`,
+    canvas: `${canvasWidth}x${canvasHeight}`, 
+    angle: rotationAngle,
+    shave: shavePixels
+  })
   
-  // Fórmula matemática exacta del legacy para el rectángulo inscrito más grande
-  if (cosA + sinA === 0) {
-    return calculateConservativeRectangle(width, height)
+  // Normalizar ángulo: θ = |angle % 180|
+  const normalizedAngle = Math.abs(rotationAngle % 180)
+  if (normalizedAngle === 0) {
+    // Sin rotación: usar dimensiones originales centradas con shave
+    const x = Math.floor((canvasWidth - originalWidth) / 2) + shavePixels
+    const y = Math.floor((canvasHeight - originalHeight) / 2) + shavePixels
+    const width = Math.floor(originalWidth - (shavePixels * 2))
+    const height = Math.floor(originalHeight - (shavePixels * 2))
+    
+    return {
+      x: Math.max(0, x),
+      y: Math.max(0, y),
+      width: Math.max(1, width),
+      height: Math.max(1, height)
+    }
   }
   
-  // Calcular el factor de escala usando la fórmula del legacy
-  const factor = Math.min(
-    width / (width * cosA + height * sinA),
-    height / (width * sinA + height * cosA)
-  )
+  // Conversión a radianes
+  const angleRad = (normalizedAngle * Math.PI) / 180
+  const cos = Math.abs(Math.cos(angleRad))
+  const sin = Math.abs(Math.sin(angleRad))
   
-  // Calcular dimensiones del rectángulo inscrito
-  const inscribedWidth = Math.floor(width * factor)
-  const inscribedHeight = Math.floor(height * factor)
+  // Fórmula matemática correcta del rectángulo máximo inscrito axis-aligned
+  // dentro de un rectángulo de dimensiones (w0, h0) rotado por ángulo θ
   
-  // Centrar el rectángulo
-  const x = Math.floor((width - inscribedWidth) / 2)
-  const y = Math.floor((height - inscribedHeight) / 2)
+  // El rectángulo inscrito más grande tiene dimensiones:
+  // factor = min(w0/(w0*cos + h0*sin), h0/(w0*sin + h0*cos))
+  // inscribed_w = w0 * factor
+  // inscribed_h = h0 * factor
   
-  return {
+  const rotatedBoundingWidth = originalWidth * cos + originalHeight * sin
+  const rotatedBoundingHeight = originalWidth * sin + originalHeight * cos
+  
+  if (rotatedBoundingWidth === 0 || rotatedBoundingHeight === 0) {
+    // Caso edge: evitar división por cero
+    inscribedWidth = Math.min(originalWidth, originalHeight) * 0.7
+    inscribedHeight = Math.min(originalWidth, originalHeight) * 0.7
+  } else {
+    // Calcular factor de escala que garantiza que el rectángulo inscrito
+    // cabe completamente dentro del rectángulo rotado
+    const scaleFactor = Math.min(
+      originalWidth / rotatedBoundingWidth,
+      originalHeight / rotatedBoundingHeight
+    )
+    
+    // Aplicar factor de escala a las dimensiones originales
+    inscribedWidth = originalWidth * scaleFactor
+    inscribedHeight = originalHeight * scaleFactor
+    
+    // Verificación de sanidad: nunca debe exceder las dimensiones originales
+    inscribedWidth = Math.min(inscribedWidth, originalWidth)
+    inscribedHeight = Math.min(inscribedHeight, originalHeight)
+  }
+  
+  // Aplicar redondeo hacia enteros (pixel-perfect)
+  inscribedWidth = Math.floor(inscribedWidth)
+  inscribedHeight = Math.floor(inscribedHeight)
+  
+  // Aplicar shave de seguridad
+  inscribedWidth = Math.floor(inscribedWidth - (shavePixels * 2))
+  inscribedHeight = Math.floor(inscribedHeight - (shavePixels * 2))
+  
+  // Asegurar dimensiones mínimas
+  inscribedWidth = Math.max(1, inscribedWidth)
+  inscribedHeight = Math.max(1, inscribedHeight)
+  
+  // Mapear al sistema de coordenadas del canvas expandido (centrado)
+  const x = Math.floor((canvasWidth - inscribedWidth) / 2)
+  const y = Math.floor((canvasHeight - inscribedHeight) / 2)
+  
+  const result = {
     x: Math.max(0, x),
     y: Math.max(0, y),
-    width: Math.max(1, inscribedWidth),
-    height: Math.max(1, inscribedHeight)
+    width: inscribedWidth,
+    height: inscribedHeight
   }
+  
+  devLog('✅ Rectángulo geométrico calculado', {
+    inscribed: `${result.width}x${result.height}`,
+    position: `(${result.x}, ${result.y})`,
+    reduction: `${Math.round((1 - (result.width * result.height) / (originalWidth * originalHeight)) * 100)}%`,
+    method: 'geometric_deterministic'
+  })
+  
+  return result
 }
 
 /**
