@@ -3,10 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { ImageUploader } from '@/components/image-uploader'
-import { ProcessingOptions } from '@/components/processing-options'
-import { ImagePreview } from '@/components/image-preview'
-import { ProcessingProgress } from '@/components/processing-progress'
-import { ConsentBanner } from '@/components/consent-banner'
 import { ProcessedResult } from '@/components/processed-result'
 import { BatchProgress } from '@/components/batch-progress'
 import { PreviewCompare } from '@/components/preview-compare'
@@ -15,18 +11,19 @@ import { Panel } from '@/components/ui/panel'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Header } from '@/components/header'
+import { FooterNote } from '@/components/footer-note'
+import { ControlsToolbar } from '@/components/controls-toolbar'
+import { stripExif } from '@/lib/exif'
 import { 
   Camera, 
-  Settings, 
   Eye, 
   Download, 
   Upload,
   Scissors,
-  RotateCw,
-  RotateCcw,
   Zap,
   Shield,
-  Cpu
+  Cpu,
+  CheckCircle
 } from 'lucide-react'
 
 interface ProcessingOptions {
@@ -67,7 +64,7 @@ export default function HomePage() {
     maintainAspectRatio: true,
     quality: 90,
     format: 'jpeg',
-    preserveExif: true,
+    preserveExif: false, // Always remove EXIF by default
     projectName: 'processed-images',
     shavePixels: 1,
     useGeometricCrop: true
@@ -77,8 +74,8 @@ export default function HomePage() {
   const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 })
   const [processedImages, setProcessedImages] = useState<ProcessedImage[]>([])
   const [consentGiven, setConsentGiven] = useState(false)
-  const [showConsentBanner, setShowConsentBanner] = useState(true)
   const [currentFileName, setCurrentFileName] = useState<string>('')
+  const [showExifToast, setShowExifToast] = useState(false)
   
   // Keyboard shortcuts
   useEffect(() => {
@@ -160,9 +157,13 @@ export default function HomePage() {
       
       try {
         // Process image in web worker
-        const result = await processImageInWorker(worker, file, processingOptions, i + 1)
-        results.push(result)
+        let result = await processImageInWorker(worker, file, processingOptions, i + 1)
         
+        // Strip EXIF metadata from processed blob
+        const cleanBlob = await stripExif(result.processedBlob)
+        result = { ...result, processedBlob: cleanBlob }
+        
+        results.push(result)
         setProcessingProgress({ current: i + 1, total: selectedFiles.length })
       } catch (error) {
         results.push({
@@ -179,6 +180,13 @@ export default function HomePage() {
     setProcessedImages(results)
     setIsProcessing(false)
     setCurrentFileName('')
+
+    // Show EXIF removal toast
+    const successfulCount = results.filter(r => r.success).length
+    if (successfulCount > 0) {
+      setShowExifToast(true)
+      setTimeout(() => setShowExifToast(false), 5000) // Hide after 5 seconds
+    }
 
     // If consent was given, send one image to backend
     if (consentGiven && results.length > 0) {
@@ -248,70 +256,67 @@ export default function HomePage() {
     }
   }
 
-  const leftPanel = (
-    <div className="space-y-6">
-      {/* Hero Section */}
-      {selectedFiles.length === 0 && (
-        <motion.div 
-          className="text-center space-y-6 py-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="space-y-4">
-            <motion.div
-              animate={{ 
-                rotate: [0, 5, -5, 0],
-                scale: [1, 1.05, 1] 
-              }}
-              transition={{ 
-                duration: 3, 
-                repeat: Infinity, 
-                ease: "easeInOut" 
-              }}
+  // Upload Panel
+  const uploadPanel = selectedFiles.length === 0 ? (
+    <div className="text-center space-y-6 py-8">
+      <motion.div 
+        className="space-y-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div className="space-y-4">
+          <motion.div
+            animate={{ 
+              rotate: [0, 5, -5, 0],
+              scale: [1, 1.05, 1] 
+            }}
+            transition={{ 
+              duration: 3, 
+              repeat: Infinity, 
+              ease: "easeInOut" 
+            }}
+          >
+            <Camera className="h-16 w-16 text-primary mx-auto" />
+          </motion.div>
+          <div>
+            <h1 className="text-4xl font-bold tracking-tighter text-text-primary mb-2">
+              Image Processor
+            </h1>
+            <h2 className="text-xl font-semibold text-primary tracking-tight">
+              Geometric Crop Engine
+            </h2>
+          </div>
+        </div>
+        
+        <p className="text-text-muted text-lg max-w-md mx-auto leading-relaxed">
+          Procesamiento avanzado con algoritmo geométrico determinista. 
+          <span className="text-primary font-medium">Cero bordes garantizado</span>.
+        </p>
+        
+        <div className="grid grid-cols-3 gap-4 max-w-sm mx-auto">
+          {[
+            { icon: Cpu, label: 'Geometric\nAlgorithm' },
+            { icon: Zap, label: 'Web Worker\nPerformance' },
+            { icon: Shield, label: 'Browser\nOnly' }
+          ].map((feature, i) => (
+            <motion.div 
+              key={i}
+              className="text-center p-3 rounded-xl bg-surface/50 border border-border"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 + i * 0.1, duration: 0.3 }}
             >
-              <Camera className="h-16 w-16 text-primary mx-auto" />
+              <feature.icon className="h-6 w-6 text-primary mx-auto mb-2" />
+              <p className="text-xs text-text-muted whitespace-pre-line">
+                {feature.label}
+              </p>
             </motion.div>
-            <div>
-              <h1 className="text-4xl font-bold tracking-tighter text-text-primary mb-2">
-                Image Processor
-              </h1>
-              <h2 className="text-xl font-semibold text-primary tracking-tight">
-                Geometric Crop Engine
-              </h2>
-            </div>
-          </div>
-          
-          <p className="text-text-muted text-lg max-w-md mx-auto leading-relaxed">
-            Procesamiento avanzado con algoritmo geométrico determinista. 
-            <span className="text-primary font-medium">Cero bordes garantizado</span>.
-          </p>
-          
-          <div className="grid grid-cols-3 gap-4 max-w-sm mx-auto">
-            {[
-              { icon: Cpu, label: 'Geometric\nAlgorithm' },
-              { icon: Zap, label: 'Web Worker\nPerformance' },
-              { icon: Shield, label: 'Browser\nOnly' }
-            ].map((feature, i) => (
-              <motion.div 
-                key={i}
-                className="text-center p-3 rounded-xl bg-surface/50 border border-border"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + i * 0.1, duration: 0.3 }}
-              >
-                <feature.icon className="h-6 w-6 text-primary mx-auto mb-2" />
-                <p className="text-xs text-text-muted whitespace-pre-line">
-                  {feature.label}
-                </p>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      )}
+          ))}
+        </div>
+      </motion.div>
 
-      {/* File Upload */}
-      <Panel delay={0.1}>
+      <Panel delay={0.3}>
         <CardHeader>
           <CardTitle className="flex items-center gap-3">
             <Upload className="h-5 w-5 text-primary" />
@@ -329,63 +334,80 @@ export default function HomePage() {
           />
         </CardContent>
       </Panel>
+    </div>
+  ) : null
 
-      {/* Processing Options */}
-      {selectedFiles.length > 0 && (
-        <Panel delay={0.2}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3">
-              <Settings className="h-5 w-5 text-primary" />
-              Opciones de Procesamiento
-            </CardTitle>
-            <CardDescription>
-              Configurar rotación, recorte geométrico y formato de salida
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ProcessingOptions
-              options={processingOptions}
-              onChange={handleOptionsChange}
-              disabled={isProcessing}
+  // Toolbar Panel - Controls (only show when files are selected)
+  const toolbarPanel = selectedFiles.length > 0 ? (
+    <div className="space-y-4">
+      {/* File Upload - Compact version when files are selected */}
+      <Panel delay={0}>
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-3 text-base">
+            <Upload className="h-4 w-4 text-primary" />
+            Archivos Seleccionados ({selectedFiles.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <ImageUploader
+            onFilesSelected={handleFilesSelected}
+            selectedFiles={selectedFiles}
+            maxFiles={20}
+            compact={true}
+          />
+        </CardContent>
+      </Panel>
+
+      {/* Controls Toolbar */}
+      <ControlsToolbar
+        options={processingOptions}
+        onChange={handleOptionsChange}
+        disabled={isProcessing}
+        showExifNotice={true}
+      />
+
+      {/* Process Button */}
+      {!isProcessing && (
+        <motion.div 
+          className="text-center"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+        >
+          <Button
+            onClick={handleProcessImages}
+            size="xl"
+            className="w-full relative overflow-hidden group"
+          >
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+              animate={{
+                x: ['-100%', '100%']
+              }}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "linear"
+              }}
             />
-            
-            {/* Quick Actions */}
-            <div className="mt-6 pt-6 border-t border-border">
-              <p className="text-sm text-text-muted mb-4">Acciones Rápidas</p>
-              <div className="flex gap-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => setProcessingOptions(prev => ({ ...prev, rotation: prev.rotation - 5 }))}
-                  disabled={isProcessing}
-                  className="flex-1"
-                >
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  -5°
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => setProcessingOptions(prev => ({ ...prev, rotation: prev.rotation + 5 }))}
-                  disabled={isProcessing}
-                  className="flex-1"
-                >
-                  <RotateCw className="h-4 w-4 mr-2" />
-                  +5°
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Panel>
+            <Scissors className="h-5 w-5 mr-3" />
+            Procesar {selectedFiles.length} Imagen{selectedFiles.length !== 1 ? 'es' : ''}
+          </Button>
+          
+          <p className="text-xs text-text-muted mt-2">
+            Atajos: R/L para rotar, Shift+R/L ±5°, Ctrl+S descargar
+          </p>
+        </motion.div>
       )}
     </div>
-  )
+  ) : null
 
-  const rightPanel = (
+  // Preview Panel
+  const previewPanel = (
     <div className="space-y-6">
       {/* Preview */}
       {selectedFiles.length > 0 && (
-        <Panel delay={0.3}>
+        <Panel delay={0.1}>
           <CardHeader>
             <CardTitle className="flex items-center gap-3">
               <Eye className="h-5 w-5 text-primary" />
@@ -473,40 +495,6 @@ export default function HomePage() {
           </CardContent>
         </Panel>
       )}
-
-      {/* Process Button */}
-      {selectedFiles.length > 0 && !isProcessing && (
-        <motion.div 
-          className="text-center"
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3, delay: 0.4 }}
-        >
-          <Button
-            onClick={handleProcessImages}
-            size="xl"
-            className="w-full relative overflow-hidden group"
-          >
-            <motion.div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-              animate={{
-                x: ['-100%', '100%']
-              }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                ease: "linear"
-              }}
-            />
-            <Scissors className="h-5 w-5 mr-3" />
-            Procesar {selectedFiles.length} Imagen{selectedFiles.length !== 1 ? 'es' : ''}
-          </Button>
-          
-          <p className="text-xs text-text-muted mt-2">
-            Atajos: R/L para rotar, Shift+R/L ±5°, Ctrl+S descargar
-          </p>
-        </motion.div>
-      )}
     </div>
   )
 
@@ -518,26 +506,39 @@ export default function HomePage() {
         onHelp={handleHelp}
         hasProcessedImages={processedImages.length > 0}
       />
-      
-      {/* Consent Banner */}
-      {showConsentBanner && (
+
+      <EditorLayout 
+        uploadPanel={uploadPanel}
+        toolbarPanel={toolbarPanel}
+        previewPanel={previewPanel}
+      />
+
+      {/* EXIF Removal Toast */}
+      {showExifToast && (
         <motion.div
-          initial={{ opacity: 0, y: -50 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -50 }}
+          className="fixed bottom-6 right-6 z-50"
+          initial={{ opacity: 0, x: 100, scale: 0.8 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: 100, scale: 0.8 }}
           transition={{ duration: 0.3 }}
         >
-          <ConsentBanner
-            onConsentChange={setConsentGiven}
-            onDismiss={() => setShowConsentBanner(false)}
-          />
+          <div className="bg-surface border border-border rounded-xl p-4 shadow-lg max-w-sm">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-text-primary">
+                  Procesado completado
+                </p>
+                <p className="text-xs text-text-muted">
+                  EXIF eliminado de las imágenes exportadas
+                </p>
+              </div>
+            </div>
+          </div>
         </motion.div>
       )}
 
-      <EditorLayout 
-        leftPanel={leftPanel}
-        rightPanel={rightPanel}
-      />
+      <FooterNote />
     </>
   )
 }
