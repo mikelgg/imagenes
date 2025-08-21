@@ -431,7 +431,26 @@ async function processImage(img, options) {
     const isRotated = options.rotation !== 0
     const threshold = isRotated ? 0 : 0  // Siempre threshold 0 para mejor precisión
     
-    const autoCropResult = autoCropByAlpha(workingCanvas, threshold, isRotated, options.rotation)
+    // Para rotaciones, usar la fórmula matemática del legacy directamente
+    let autoCropResult
+    if (isRotated && options.rotation) {
+      // Usar la fórmula matemática exacta del script Python legacy
+      const inscribedBounds = calculateInscribedRectangle(workingCanvas.width, workingCanvas.height, options.rotation)
+      autoCropResult = {
+        success: true,
+        boundingBox: inscribedBounds,
+        canvas: cropCanvasToBounds(workingCanvas, inscribedBounds),
+        debugInfo: {
+          originalSize: `${workingCanvas.width}x${workingCanvas.height}`,
+          croppedSize: `${inscribedBounds.width}x${inscribedBounds.height}`,
+          method: 'legacy_math_formula',
+          rotation: options.rotation
+        }
+      }
+    } else {
+      // Para imágenes sin rotación, usar el auto-crop normal
+      autoCropResult = autoCropByAlpha(workingCanvas, threshold)
+    }
     
     if (autoCropResult.success) {
       const originalArea = workingCanvas.width * workingCanvas.height
@@ -446,12 +465,13 @@ async function processImage(img, options) {
         wasRotated: isRotated
       })
       
-      // Si la reducción es significativa después de rotación, es buena señal
-      if (isRotated && reductionPercentage > 5) {
-        devLog('🎯 Esquinas de rotación eliminadas exitosamente', { 
-          reduction: `${reductionPercentage.toFixed(1)}%` 
-        })
-      }
+             // Si la reducción es significativa después de rotación, es buena señal
+       if (isRotated && reductionPercentage > 5) {
+         devLog('🎯 Esquinas de rotación eliminadas exitosamente usando fórmula legacy', { 
+           reduction: `${reductionPercentage.toFixed(1)}%`,
+           method: 'legacy_math_formula'
+         })
+       }
     } else {
       devLog('⚠️ Auto-recorte falló, usando imagen original', autoCropResult.debugInfo)
     }
@@ -603,6 +623,98 @@ function createCanvasFromImageBitmap(imageBitmap) {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(imageBitmap, 0, 0)
   return canvas
+}
+
+/**
+ * Calcula el rectángulo inscrito más grande usando la fórmula matemática exacta del legacy
+ * Esta es la misma lógica que funciona correctamente en el script Python
+ */
+function calculateInscribedRectangle(width, height, rotationAngle) {
+  // Para rotaciones que no son múltiplos de 90°, usar la fórmula matemática exacta del legacy
+  const angleRad = Math.abs(rotationAngle * Math.PI / 180)
+  const cosA = Math.abs(Math.cos(angleRad))
+  const sinA = Math.abs(Math.sin(angleRad))
+  
+  // Fórmula matemática exacta del legacy para el rectángulo inscrito más grande
+  if (cosA + sinA === 0) {
+    return calculateConservativeRectangle(width, height)
+  }
+  
+  // Calcular el factor de escala usando la fórmula del legacy
+  const factor = Math.min(
+    width / (width * cosA + height * sinA),
+    height / (width * sinA + height * cosA)
+  )
+  
+  // Calcular dimensiones del rectángulo inscrito
+  const inscribedWidth = Math.floor(width * factor)
+  const inscribedHeight = Math.floor(height * factor)
+  
+  // Centrar el rectángulo
+  const x = Math.floor((width - inscribedWidth) / 2)
+  const y = Math.floor((height - inscribedHeight) / 2)
+  
+  return {
+    x: Math.max(0, x),
+    y: Math.max(0, y),
+    width: Math.max(1, inscribedWidth),
+    height: Math.max(1, inscribedHeight)
+  }
+}
+
+/**
+ * Calcula un rectángulo conservador cuando no hay información de rotación específica
+ */
+function calculateConservativeRectangle(width, height) {
+  const aspectRatio = width / height
+  
+  // Factor de reducción basado en la relación de aspecto
+  let factor = 0.85 // Factor base
+  
+  // Ajustar factor según la relación de aspecto
+  if (aspectRatio > 1.5) {
+    // Imagen muy ancha
+    factor = 0.9
+  } else if (aspectRatio < 0.7) {
+    // Imagen muy alta
+    factor = 0.8
+  }
+  
+  // Calcular dimensiones del rectángulo inscrito
+  const inscribedWidth = Math.floor(width * factor)
+  const inscribedHeight = Math.floor(height * factor)
+  
+  // Centrar el rectángulo
+  const x = Math.floor((width - inscribedWidth) / 2)
+  const y = Math.floor((height - inscribedHeight) / 2)
+  
+  return {
+    x: Math.max(0, x),
+    y: Math.max(0, y),
+    width: Math.max(1, inscribedWidth),
+    height: Math.max(1, inscribedHeight)
+  }
+}
+
+/**
+ * Recorta un canvas según los bounds especificados
+ */
+function cropCanvasToBounds(canvas, bounds) {
+  const croppedCanvas = new OffscreenCanvas(bounds.width, bounds.height)
+  const croppedCtx = croppedCanvas.getContext('2d')
+  if (!croppedCtx) {
+    throw new Error('No se pudo crear contexto para canvas recortado')
+  }
+  
+  // Copiar solo la región del bounding box
+  croppedCtx.clearRect(0, 0, bounds.width, bounds.height)
+  croppedCtx.drawImage(
+    canvas,
+    bounds.x, bounds.y, bounds.width, bounds.height,
+    0, 0, bounds.width, bounds.height
+  )
+  
+  return croppedCanvas
 }
 
 /**

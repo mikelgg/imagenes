@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Fórmula Legacy</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        .controls input, .controls button {
+            margin: 5px;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .controls button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .controls button:hover {
+            background: #0056b3;
+        }
+        canvas {
+            max-width: 100%;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            background: white;
+        }
+        .info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Fórmula Matemática Legacy</h1>
+        
+        <div class="controls">
+            <input type="file" id="fileInput" accept="image/*">
+            <input type="range" id="rotationSlider" min="-45" max="45" value="15" step="1">
+            <span>Rotación: <span id="rotationValue">15</span>°</span>
+            <button id="processBtn">Procesar con Fórmula Legacy</button>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+            <div>
+                <h3>📤 Imagen Original</h3>
+                <canvas id="originalCanvas"></canvas>
+                <div class="info" id="originalInfo">Selecciona una imagen...</div>
+            </div>
+            
+            <div>
+                <h3>✂️ Resultado con Fórmula Legacy</h3>
+                <canvas id="resultCanvas"></canvas>
+                <div class="info" id="resultInfo">Presiona "Procesar" para ver resultado...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Referencias DOM
+        const fileInput = document.getElementById('fileInput');
+        const rotationSlider = document.getElementById('rotationSlider');
+        const rotationValue = document.getElementById('rotationValue');
+        const processBtn = document.getElementById('processBtn');
+        const originalCanvas = document.getElementById('originalCanvas');
+        const resultCanvas = document.getElementById('resultCanvas');
+        const originalInfo = document.getElementById('originalInfo');
+        const resultInfo = document.getElementById('resultInfo');
+
+        let currentFile = null;
+
+        // Actualizar valor de rotación
+        rotationSlider.addEventListener('input', (e) => {
+            rotationValue.textContent = e.target.value;
+        });
+
+        // Cargar imagen
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            currentFile = file;
+            
+            // Mostrar imagen original
+            const img = new Image();
+            img.onload = () => {
+                originalCanvas.width = img.width;
+                originalCanvas.height = img.height;
+                const ctx = originalCanvas.getContext('2d');
+                ctx.clearRect(0, 0, img.width, img.height);
+                ctx.drawImage(img, 0, 0);
+                
+                originalInfo.textContent = `${img.width}x${img.height} | ${(file.size/1024).toFixed(1)}KB | ${file.type}`;
+            };
+            img.src = URL.createObjectURL(file);
+        });
+
+        // Fórmula matemática exacta del legacy
+        function calculateInscribedRectangle(width, height, rotationAngle) {
+            const angleRad = Math.abs(rotationAngle * Math.PI / 180);
+            const cosA = Math.abs(Math.cos(angleRad));
+            const sinA = Math.abs(Math.sin(angleRad));
+            
+            if (cosA + sinA === 0) {
+                return calculateConservativeRectangle(width, height);
+            }
+            
+            const factor = Math.min(
+                width / (width * cosA + height * sinA),
+                height / (width * sinA + height * cosA)
+            );
+            
+            const inscribedWidth = Math.floor(width * factor);
+            const inscribedHeight = Math.floor(height * factor);
+            
+            const x = Math.floor((width - inscribedWidth) / 2);
+            const y = Math.floor((height - inscribedHeight) / 2);
+            
+            return {
+                x: Math.max(0, x),
+                y: Math.max(0, y),
+                width: Math.max(1, inscribedWidth),
+                height: Math.max(1, inscribedHeight)
+            };
+        }
+
+        function calculateConservativeRectangle(width, height) {
+            const aspectRatio = width / height;
+            let factor = 0.85;
+            
+            if (aspectRatio > 1.5) {
+                factor = 0.9;
+            } else if (aspectRatio < 0.7) {
+                factor = 0.8;
+            }
+            
+            const inscribedWidth = Math.floor(width * factor);
+            const inscribedHeight = Math.floor(height * factor);
+            
+            const x = Math.floor((width - inscribedWidth) / 2);
+            const y = Math.floor((height - inscribedHeight) / 2);
+            
+            return {
+                x: Math.max(0, x),
+                y: Math.max(0, y),
+                width: Math.max(1, inscribedWidth),
+                height: Math.max(1, inscribedHeight)
+            };
+        }
+
+        // Procesar imagen
+        processBtn.addEventListener('click', async () => {
+            if (!currentFile) {
+                alert('Selecciona una imagen primero');
+                return;
+            }
+
+            processBtn.disabled = true;
+            processBtn.textContent = 'Procesando...';
+            resultInfo.textContent = 'Procesando...';
+
+            try {
+                // Crear worker
+                const worker = new Worker('/workers/image-processor.worker.mjs', { type: 'module' });
+                
+                worker.onmessage = async (e) => {
+                    const { success, result, error } = e.data;
+                    
+                    if (success) {
+                        const blob = result.blob;
+                        const debugInfo = result.debugInfo;
+                        
+                        // Mostrar resultado
+                        const img = new Image();
+                        img.onload = () => {
+                            resultCanvas.width = img.width;
+                            resultCanvas.height = img.height;
+                            const ctx = resultCanvas.getContext('2d');
+                            ctx.clearRect(0, 0, img.width, img.height);
+                            ctx.drawImage(img, 0, 0);
+                            
+                            resultInfo.textContent = `${img.width}x${img.height} | ${(blob.size/1024).toFixed(1)}KB`;
+                            
+                            // Mostrar debug info
+                            if (debugInfo) {
+                                console.log('Debug Info:', debugInfo);
+                            }
+                        };
+                        img.src = URL.createObjectURL(blob);
+                        
+                    } else {
+                        alert(`Error: ${error}`);
+                        resultInfo.textContent = `Error: ${error}`;
+                    }
+                    
+                    processBtn.disabled = false;
+                    processBtn.textContent = 'Procesar con Fórmula Legacy';
+                };
+
+                worker.onerror = (error) => {
+                    alert(`Worker Error: ${error.message}`);
+                    processBtn.disabled = false;
+                    processBtn.textContent = 'Procesar con Fórmula Legacy';
+                };
+
+                // Enviar trabajo al worker
+                const options = {
+                    rotation: parseInt(rotationSlider.value),
+                    cropX: 0,
+                    cropY: 0,
+                    cropWidth: 0,
+                    cropHeight: 0,
+                    resizeWidth: 0,
+                    resizeHeight: 0,
+                    maintainAspectRatio: true,
+                    quality: 90,
+                    format: 'jpeg',
+                    preserveExif: false,
+                    debugMode: true
+                };
+
+                console.log(`Procesando con rotación ${options.rotation}° usando fórmula legacy`);
+                worker.postMessage({ file: currentFile, options });
+
+            } catch (error) {
+                alert(`Error al procesar: ${error.message}`);
+                processBtn.disabled = false;
+                processBtn.textContent = 'Procesar con Fórmula Legacy';
+            }
+        });
+
+        console.log('🧪 Test de fórmula legacy inicializado');
+        console.log('💡 Carga una imagen y rótala para probar la fórmula matemática del script Python');
+    </script>
+</body>
+</html>
