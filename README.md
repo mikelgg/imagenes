@@ -15,7 +15,9 @@ Procesa hasta 20 imágenes con rotación automática, recorte inteligente y redi
 - 🛡️ **Cumple GDPR/CCPA** - transparencia total
 
 ### 🎨 **Procesamiento iPhone-Style**
-- 🔄 **Rotación inteligente** con auto-crop (sin bordes negros/blancos)
+- 🔄 **Rotación inteligente mejorada** con auto-crop avanzado (elimina bordes completamente)
+- 🆕 **Algoritmo de detección de esquinas** - identifica y elimina píxeles de interpolación
+- 🆕 **Crop rectangular perfecto** - garantiza imágenes sin bordes blancos/transparentes
 - ✂️ **Recorte lateral opcional** después de rotación  
 - 📏 **Redimensionado** con conservación de proporción
 - 🎯 **Multi-formato** (JPEG, PNG, WebP) con control de calidad
@@ -32,6 +34,29 @@ Procesa hasta 20 imágenes con rotación automática, recorte inteligente y redi
 - ⚡ **Web Workers** - procesamiento sin lag
 - 🔧 **Canvas API** optimizado para alta calidad
 - 💾 **Gestión de memoria** eficiente para archivos grandes
+
+---
+
+## 🧠 Algoritmo de Auto-Crop Mejorado
+
+### ✨ Nuevas Características
+- **Detección adaptativa**: Analiza los bordes de la imagen para detectar patrones de rotación
+- **Eliminación de píxeles interpolados**: Identifica y descarta píxeles generados por interpolación
+- **Crop inteligente**: Busca el rectángulo inscrito más grande que evite esquinas vacías
+- **Análisis de densidad**: Evalúa la densidad de contenido real vs bordes artificiales
+- **Margen de seguridad**: Preserva líneas finas y contenido importante
+
+### 🔧 Criterios de Detección
+1. **Transparencia**: Píxeles completamente transparentes o con alpha muy bajo
+2. **Colores interpolados**: Detección de tonos beige/blanquecinos típicos de rotación
+3. **Proximidad a bordes**: Análisis contextual de píxeles cerca de los bordes
+4. **Densidad de contenido**: Evaluación de regiones con baja densidad de píxeles válidos
+
+### 🎯 Resultado
+- ✅ **Imágenes perfectamente rectangulares** después de rotación
+- ✅ **Sin bordes blancos o transparentes** visibles
+- ✅ **Máximo aprovechamiento del contenido** real
+- ✅ **Funciona con cualquier ángulo** de rotación
 
 ---
 

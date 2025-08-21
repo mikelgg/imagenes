@@ -23,11 +23,13 @@ export interface AutoCropResult {
  * 
  * @param input - Canvas o ImageBitmap de entrada
  * @param threshold - Umbral de alpha (por defecto 0 = cualquier pixel no completamente transparente)
+ * @param isRotated - Si la imagen fue rotada (aplica algoritmo más agresivo)
  * @returns Resultado del auto-recorte con canvas recortado
  */
 export function autoCropByAlpha(
   input: OffscreenCanvas | ImageBitmap, 
-  threshold: number = 0
+  threshold: number = 0,
+  isRotated: boolean = false
 ): AutoCropResult {
   try {
     // Crear canvas temporal si la entrada es ImageBitmap
@@ -55,7 +57,7 @@ export function autoCropByAlpha(
     const data = imageData.data
     
     // Calcular bounding box de píxeles con alpha > threshold
-    const boundingBox = calculateAlphaBoundingBox(data, sourceCanvas.width, sourceCanvas.height, threshold)
+    let boundingBox = calculateAlphaBoundingBox(data, sourceCanvas.width, sourceCanvas.height, threshold, isRotated)
     
     if (!boundingBox) {
       // No se encontró contenido válido - devolver canvas original como fallback seguro
@@ -63,8 +65,13 @@ export function autoCropByAlpha(
         success: false,
         boundingBox: { x: 0, y: 0, width: sourceCanvas.width, height: sourceCanvas.height },
         canvas: sourceCanvas,
-        debugInfo: { reason: 'No content found', threshold }
+        debugInfo: { reason: 'No content found', threshold, isRotated }
       }
+    }
+
+    // Para imágenes rotadas, aplicar optimización de recorte rectangular
+    if (isRotated) {
+      boundingBox = optimizeRotatedCrop(boundingBox, sourceCanvas.width, sourceCanvas.height, data)
     }
 
     // Crear canvas recortado
@@ -92,7 +99,8 @@ export function autoCropByAlpha(
         originalSize: `${sourceCanvas.width}x${sourceCanvas.height}`,
         croppedSize: `${boundingBox.width}x${boundingBox.height}`,
         reduction: `${Math.round(reduction * 100)}%`,
-        threshold
+        threshold,
+        isRotated
       }
     }
     
@@ -115,17 +123,22 @@ export function autoCropByAlpha(
 
 /**
  * Calcula el bounding box mínimo de píxeles de contenido real
- * Detecta tanto transparencia como bordes interpolados de rotación
+ * Algoritmo mejorado para eliminar completamente las esquinas vacías después de rotación
  */
 function calculateAlphaBoundingBox(
   data: Uint8ClampedArray, 
   width: number, 
   height: number, 
-  threshold: number
+  threshold: number,
+  isRotated: boolean = false
 ): BoundingBox | null {
+  
+  // PASO 1: Análisis inicial para determinar el tipo de imagen y contenido
+  const edgeData = analyzeImageEdges(data, width, height)
+  
   let minX = width, minY = height, maxX = -1, maxY = -1
 
-  // ALGORITMO MEJORADO: Detectar contenido real vs bordes de rotación
+  // PASO 2: Algoritmo de detección adaptativo según el tipo de contenido
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const pixelIndex = (y * width + x) * 4
@@ -134,29 +147,29 @@ function calculateAlphaBoundingBox(
       const b = data[pixelIndex + 2]
       const alpha = data[pixelIndex + 3]
       
-      // CRITERIOS MÚLTIPLES para detectar contenido real:
-      
-      // 1. Píxeles completamente transparentes = fondo
+      // CRITERIO 1: Píxeles completamente transparentes = definitivamente fondo
       if (alpha <= threshold) continue
       
-      // 2. Píxeles muy transparentes (interpolación) = probablemente fondo  
-      if (alpha < 30) continue
+      // CRITERIO 2: Píxeles muy transparentes por interpolación
+      if (alpha < 50) continue
       
-      // 3. Detectar píxeles de "fondo claro" típicos de rotación
-      // Estos son píxeles que aparecen por interpolación en los bordes
-      const isLightBackground = (
-        // Colores muy claros/blanquecinos
-        (r > 240 && g > 240 && b > 240) ||
-        // Colores beige/amarillentos típicos de fondos interpolados
-        (r > 230 && g > 220 && b > 180 && Math.abs(r - g) < 20) ||
-        // Grises muy claros
-        (Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && r > 235)
-      )
+      // CRITERIO 3: Detección mejorada de píxeles de borde/interpolación
+      const isEdgePixel = detectEdgePixel(r, g, b, alpha, x, y, width, height, edgeData)
+      if (isEdgePixel) continue
       
-      // 4. Si el píxel tiene alpha medio y es color de fondo, probablemente es borde
-      if (alpha < 200 && isLightBackground) continue
+      // CRITERIO 4: Para píxeles con transparencia parcial, ser más estricto
+      if (alpha < 180) {
+        // Solo considerar válidos si tienen contraste significativo con el fondo típico
+        const hasSignificantContent = (
+          // No es color de fondo interpolado
+          !(r > 230 && g > 230 && b > 230) &&
+          // Tiene suficiente saturación o contraste
+          (Math.max(r, g, b) - Math.min(r, g, b) > 20 || Math.max(r, g, b) < 200)
+        )
+        if (!hasSignificantContent) continue
+      }
       
-      // 5. PÍXEL VÁLIDO: Alpha significativo y no es color de fondo típico
+      // PÍXEL VÁLIDO: Incluir en el bounding box
       minX = Math.min(minX, x)
       minY = Math.min(minY, y)
       maxX = Math.max(maxX, x)
@@ -169,12 +182,241 @@ function calculateAlphaBoundingBox(
     return null
   }
 
-  return {
+  // PASO 3: Aplicar margen de seguridad mínimo para evitar cortar contenido real
+  const finalBounds = applySecurityMargin({
     x: minX,
     y: minY,
     width: maxX - minX + 1,
     height: maxY - minY + 1
+  }, width, height)
+
+  return finalBounds
+}
+
+/**
+ * Analiza los bordes de la imagen para detectar patrones de rotación
+ */
+function analyzeImageEdges(data: Uint8ClampedArray, width: number, height: number) {
+  const edgePixels: Array<{r: number, g: number, b: number, alpha: number}> = []
+  const borderWidth = Math.min(20, Math.floor(Math.min(width, height) * 0.05))
+  
+  // Analizar píxeles del borde para detectar colores típicos de interpolación
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const isEdge = x < borderWidth || x >= width - borderWidth || 
+                     y < borderWidth || y >= height - borderWidth
+      
+      if (isEdge) {
+        const pixelIndex = (y * width + x) * 4
+        edgePixels.push({
+          r: data[pixelIndex],
+          g: data[pixelIndex + 1],
+          b: data[pixelIndex + 2],
+          alpha: data[pixelIndex + 3]
+        })
+      }
+    }
   }
+  
+  // Calcular estadísticas de los bordes
+  const avgEdgeColor = edgePixels.reduce((acc, pixel) => ({
+    r: acc.r + pixel.r,
+    g: acc.g + pixel.g,
+    b: acc.b + pixel.b,
+    alpha: acc.alpha + pixel.alpha
+  }), {r: 0, g: 0, b: 0, alpha: 0})
+  
+  if (edgePixels.length > 0) {
+    avgEdgeColor.r /= edgePixels.length
+    avgEdgeColor.g /= edgePixels.length
+    avgEdgeColor.b /= edgePixels.length
+    avgEdgeColor.alpha /= edgePixels.length
+  }
+  
+  return {
+    avgEdgeColor,
+    hasTransparentEdges: avgEdgeColor.alpha < 100,
+    hasLightEdges: avgEdgeColor.r > 200 && avgEdgeColor.g > 200 && avgEdgeColor.b > 200
+  }
+}
+
+/**
+ * Detecta si un píxel es probablemente resultado de interpolación de bordes
+ */
+function detectEdgePixel(
+  r: number, g: number, b: number, alpha: number,
+  x: number, y: number, width: number, height: number,
+  edgeData: any
+): boolean {
+  
+  // 1. Píxeles con alpha muy bajo son claramente de borde
+  if (alpha < 80) return true
+  
+  // 2. Si la imagen tiene bordes transparentes y este píxel está cerca del borde
+  if (edgeData.hasTransparentEdges) {
+    const distanceFromEdge = Math.min(x, y, width - 1 - x, height - 1 - y)
+    const maxDistanceToConsider = Math.min(30, Math.floor(Math.min(width, height) * 0.08))
+    
+    if (distanceFromEdge < maxDistanceToConsider) {
+      // Píxel cerca del borde con alpha bajo-medio = probablemente interpolación
+      if (alpha < 150) return true
+      
+      // Colores muy claros cerca del borde = probablemente interpolación
+      if (r > 235 && g > 235 && b > 235) return true
+    }
+  }
+  
+  // 3. Colores extremadamente claros/blancos con cualquier nivel de transparencia
+  if (r > 248 && g > 248 && b > 248 && alpha < 255) return true
+  
+  // 4. Colores beige/amarillentos típicos de interpolación sobre fondos claros
+  if (r > 240 && g > 235 && b > 220 && alpha < 220 && Math.abs(r - g) < 15) return true
+  
+  // 5. Grises muy claros con transparencia parcial
+  if (Math.abs(r - g) < 8 && Math.abs(g - b) < 8 && r > 240 && alpha < 200) return true
+  
+  return false
+}
+
+/**
+ * Aplica un margen de seguridad mínimo para evitar cortar contenido real
+ */
+function applySecurityMargin(bounds: BoundingBox, canvasWidth: number, canvasHeight: number): BoundingBox {
+  // Margen de seguridad: 1-2 píxeles para evitar cortar líneas finas
+  const margin = 2
+  
+  return {
+    x: Math.max(0, bounds.x - margin),
+    y: Math.max(0, bounds.y - margin),
+    width: Math.min(canvasWidth - Math.max(0, bounds.x - margin), bounds.width + margin * 2),
+    height: Math.min(canvasHeight - Math.max(0, bounds.y - margin), bounds.height + margin * 2)
+  }
+}
+
+/**
+ * Optimiza el recorte para imágenes rotadas, maximizando el área de contenido
+ * sin incluir esquinas vacías típicas de rotación
+ */
+function optimizeRotatedCrop(
+  initialBounds: BoundingBox, 
+  canvasWidth: number, 
+  canvasHeight: number, 
+  imageData: Uint8ClampedArray
+): BoundingBox {
+  
+  // Calcular el centro de la imagen
+  const centerX = canvasWidth / 2
+  const centerY = canvasHeight / 2
+  
+  // Calcular el centro del contenido detectado
+  const contentCenterX = initialBounds.x + initialBounds.width / 2
+  const contentCenterY = initialBounds.y + initialBounds.height / 2
+  
+  // Si el contenido está muy descentrado, podría ser indicativo de rotación
+  const offsetX = Math.abs(contentCenterX - centerX)
+  const offsetY = Math.abs(contentCenterY - centerY)
+  const maxExpectedOffset = Math.min(canvasWidth, canvasHeight) * 0.1
+  
+  // Para rotaciones significativas, aplicar crop más conservador pero efectivo
+  if (offsetX > maxExpectedOffset || offsetY > maxExpectedOffset) {
+    // Buscar el rectángulo inscrito más grande que evite las esquinas problemáticas
+    return findInscribedRectangle(initialBounds, canvasWidth, canvasHeight, imageData)
+  }
+  
+  return initialBounds
+}
+
+/**
+ * Encuentra el rectángulo inscrito más grande dentro del contenido detectado
+ * que evite las esquinas vacías típicas de rotación
+ */
+function findInscribedRectangle(
+  bounds: BoundingBox,
+  canvasWidth: number,
+  canvasHeight: number,
+  imageData: Uint8ClampedArray
+): BoundingBox {
+  
+  // Comenzar con el bounding box detectado
+  let { x, y, width, height } = bounds
+  
+  // Reducir gradualmente desde los bordes hasta encontrar contenido sólido
+  const step = Math.max(1, Math.floor(Math.min(width, height) * 0.01))
+  
+  // Reducir desde arriba
+  while (y < bounds.y + bounds.height * 0.3 && hasLowContentDensity(imageData, canvasWidth, x, y, width, step)) {
+    y += step
+    height = Math.max(height - step, bounds.height * 0.7)
+  }
+  
+  // Reducir desde abajo
+  while (height > bounds.height * 0.7 && hasLowContentDensity(imageData, canvasWidth, x, y + height - step, width, step)) {
+    height -= step
+  }
+  
+  // Reducir desde la izquierda
+  while (x < bounds.x + bounds.width * 0.3 && hasLowContentDensity(imageData, canvasWidth, x, y, step, height)) {
+    x += step
+    width = Math.max(width - step, bounds.width * 0.7)
+  }
+  
+  // Reducir desde la derecha
+  while (width > bounds.width * 0.7 && hasLowContentDensity(imageData, canvasWidth, x + width - step, y, step, height)) {
+    width -= step
+  }
+  
+  // Asegurar que las dimensiones sean válidas
+  return {
+    x: Math.max(0, x),
+    y: Math.max(0, y),
+    width: Math.max(1, width),
+    height: Math.max(1, height)
+  }
+}
+
+/**
+ * Determina si una región tiene baja densidad de contenido (probable borde de rotación)
+ */
+function hasLowContentDensity(
+  imageData: Uint8ClampedArray,
+  canvasWidth: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): boolean {
+  
+  let validPixels = 0
+  let totalPixels = 0
+  
+  for (let dy = 0; dy < height; dy++) {
+    for (let dx = 0; dx < width; dx++) {
+      const pixelX = Math.floor(x + dx)
+      const pixelY = Math.floor(y + dy)
+      
+      if (pixelX >= 0 && pixelX < canvasWidth && pixelY >= 0) {
+        const pixelIndex = (pixelY * canvasWidth + pixelX) * 4
+        if (pixelIndex < imageData.length) {
+          const alpha = imageData[pixelIndex + 3]
+          const r = imageData[pixelIndex]
+          const g = imageData[pixelIndex + 1]
+          const b = imageData[pixelIndex + 2]
+          
+          totalPixels++
+          
+          // Considerar válido si tiene alpha alto y no es color de fondo típico
+          if (alpha > 150 && !(r > 240 && g > 240 && b > 240)) {
+            validPixels++
+          }
+        }
+      }
+    }
+  }
+  
+  if (totalPixels === 0) return true
+  
+  const density = validPixels / totalPixels
+  return density < 0.3  // Menos del 30% de píxeles válidos = baja densidad
 }
 
 /**

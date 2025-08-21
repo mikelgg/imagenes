@@ -426,19 +426,40 @@ async function processImage(img, options) {
 
     // PASO 2: Auto-recorte mejorado (SIEMPRE aplicar)
     timer.start('autoCropByAlpha')
-    const autoCropResult = autoCropByAlpha(workingCanvas, 0) // threshold = 0, pero usa detección mejorada
+    
+    // Para rotaciones, usar threshold = 0 y ser más agresivo
+    const isRotated = options.rotation !== 0
+    const threshold = isRotated ? 0 : 0  // Siempre threshold 0 para mejor precisión
+    
+    const autoCropResult = autoCropByAlpha(workingCanvas, threshold, isRotated)
     
     if (autoCropResult.success) {
+      const originalArea = workingCanvas.width * workingCanvas.height
+      const croppedArea = autoCropResult.boundingBox.width * autoCropResult.boundingBox.height
+      const reductionPercentage = ((originalArea - croppedArea) / originalArea) * 100
+      
       workingCanvas = autoCropResult.canvas || workingCanvas
       devLog('✅ Auto-recorte exitoso', {
         ...autoCropResult.debugInfo,
-        boundingBox: autoCropResult.boundingBox
+        boundingBox: autoCropResult.boundingBox,
+        reduction: `${reductionPercentage.toFixed(1)}%`,
+        wasRotated: isRotated
       })
+      
+      // Si la reducción es significativa después de rotación, es buena señal
+      if (isRotated && reductionPercentage > 5) {
+        devLog('🎯 Esquinas de rotación eliminadas exitosamente', { 
+          reduction: `${reductionPercentage.toFixed(1)}%` 
+        })
+      }
     } else {
       devLog('⚠️ Auto-recorte falló, usando imagen original', autoCropResult.debugInfo)
     }
     
-    debugInfo.autoCrop = autoCropResult.debugInfo
+    debugInfo.autoCrop = {
+      ...autoCropResult.debugInfo,
+      wasRotated: isRotated
+    }
     timer.end('autoCropByAlpha')
     
     // Modo debug: crear visualización de máscara alpha
