@@ -69,9 +69,11 @@ export function autoCropByAlpha(
       }
     }
 
-    // Para imágenes rotadas, aplicar optimización de recorte rectangular
+    // Para imágenes rotadas, aplicar optimización de recorte rectangular MÁS AGRESIVA
     if (isRotated) {
       boundingBox = optimizeRotatedCrop(boundingBox, sourceCanvas.width, sourceCanvas.height, data)
+      // Aplicar un segundo pase de recorte más agresivo
+      boundingBox = applyAggressiveCrop(boundingBox, sourceCanvas.width, sourceCanvas.height, data)
     }
 
     // Crear canvas recortado
@@ -157,14 +159,18 @@ function calculateAlphaBoundingBox(
       const isEdgePixel = detectEdgePixel(r, g, b, alpha, x, y, width, height, edgeData)
       if (isEdgePixel) continue
       
-      // CRITERIO 4: Para píxeles con transparencia parcial, ser más estricto
-      if (alpha < 180) {
+      // CRITERIO 4: Detección más agresiva de fondos texturizados (como alfombras)
+      const isTexturedBackground = detectTexturedBackground(r, g, b, alpha, x, y, width, height, data, edgeData)
+      if (isTexturedBackground) continue
+      
+      // CRITERIO 5: Para píxeles con transparencia parcial, ser más estricto
+      if (alpha < 200) {
         // Solo considerar válidos si tienen contraste significativo con el fondo típico
         const hasSignificantContent = (
           // No es color de fondo interpolado
-          !(r > 230 && g > 230 && b > 230) &&
+          !(r > 220 && g > 210 && b > 180) && // Detectar beiges/cremas
           // Tiene suficiente saturación o contraste
-          (Math.max(r, g, b) - Math.min(r, g, b) > 20 || Math.max(r, g, b) < 200)
+          (Math.max(r, g, b) - Math.min(r, g, b) > 15 || Math.max(r, g, b) < 180)
         )
         if (!hasSignificantContent) continue
       }
@@ -250,32 +256,104 @@ function detectEdgePixel(
 ): boolean {
   
   // 1. Píxeles con alpha muy bajo son claramente de borde
-  if (alpha < 80) return true
+  if (alpha < 100) return true
   
   // 2. Si la imagen tiene bordes transparentes y este píxel está cerca del borde
   if (edgeData.hasTransparentEdges) {
     const distanceFromEdge = Math.min(x, y, width - 1 - x, height - 1 - y)
-    const maxDistanceToConsider = Math.min(30, Math.floor(Math.min(width, height) * 0.08))
+    const maxDistanceToConsider = Math.min(40, Math.floor(Math.min(width, height) * 0.12))
     
     if (distanceFromEdge < maxDistanceToConsider) {
       // Píxel cerca del borde con alpha bajo-medio = probablemente interpolación
-      if (alpha < 150) return true
+      if (alpha < 180) return true
       
       // Colores muy claros cerca del borde = probablemente interpolación
-      if (r > 235 && g > 235 && b > 235) return true
+      if (r > 230 && g > 230 && b > 230) return true
     }
   }
   
   // 3. Colores extremadamente claros/blancos con cualquier nivel de transparencia
-  if (r > 248 && g > 248 && b > 248 && alpha < 255) return true
+  if (r > 245 && g > 245 && b > 245 && alpha < 255) return true
   
   // 4. Colores beige/amarillentos típicos de interpolación sobre fondos claros
-  if (r > 240 && g > 235 && b > 220 && alpha < 220 && Math.abs(r - g) < 15) return true
+  if (r > 235 && g > 230 && b > 210 && alpha < 240 && Math.abs(r - g) < 20) return true
   
   // 5. Grises muy claros con transparencia parcial
-  if (Math.abs(r - g) < 8 && Math.abs(g - b) < 8 && r > 240 && alpha < 200) return true
+  if (Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && r > 235 && alpha < 220) return true
   
   return false
+}
+
+/**
+ * Detecta fondos texturizados (como alfombras, telas, etc.) que aparecen en los bordes después de rotación
+ */
+function detectTexturedBackground(
+  r: number, g: number, b: number, alpha: number,
+  x: number, y: number, width: number, height: number,
+  imageData: Uint8ClampedArray,
+  edgeData: any
+): boolean {
+  
+  // Solo analizar píxeles cerca de los bordes
+  const distanceFromEdge = Math.min(x, y, width - 1 - x, height - 1 - y)
+  const maxDistanceToAnalyze = Math.min(60, Math.floor(Math.min(width, height) * 0.15))
+  
+  if (distanceFromEdge > maxDistanceToAnalyze) return false
+  
+  // 1. Detectar colores típicos de fondos texturizados (beiges, cremas, marrones claros)
+  const isBeigeCream = (
+    // Tonos beige/crema
+    (r > 210 && g > 200 && b > 170 && r - b > 20 && r - b < 60) ||
+    // Tonos crema más claros
+    (r > 230 && g > 220 && b > 200 && r - g < 15 && g - b > 10) ||
+    // Marrones muy claros
+    (r > 200 && g > 180 && b > 150 && r - g > 10 && g - b > 15)
+  )
+  
+  if (!isBeigeCream) return false
+  
+  // 2. Analizar consistencia del color en un área pequeña (detección de textura uniforme)
+  const sampleRadius = 3
+  let similarPixels = 0
+  let totalSamples = 0
+  
+  for (let dy = -sampleRadius; dy <= sampleRadius; dy++) {
+    for (let dx = -sampleRadius; dx <= sampleRadius; dx++) {
+      const sampleX = x + dx
+      const sampleY = y + dy
+      
+      if (sampleX >= 0 && sampleX < width && sampleY >= 0 && sampleY < height) {
+        const sampleIndex = (sampleY * width + sampleX) * 4
+        if (sampleIndex < imageData.length) {
+          const sampleR = imageData[sampleIndex]
+          const sampleG = imageData[sampleIndex + 1]
+          const sampleB = imageData[sampleIndex + 2]
+          
+          // Verificar si el píxel muestreado tiene color similar
+          const colorDistance = Math.sqrt(
+            Math.pow(r - sampleR, 2) + 
+            Math.pow(g - sampleG, 2) + 
+            Math.pow(b - sampleB, 2)
+          )
+          
+          if (colorDistance < 30) { // Colores similares
+            similarPixels++
+          }
+          totalSamples++
+        }
+      }
+    }
+  }
+  
+  // Si hay alta consistencia de color = probablemente fondo texturizado
+  const consistency = totalSamples > 0 ? similarPixels / totalSamples : 0
+  
+  // 3. Decisión final: es fondo texturizado si:
+  return (
+    consistency > 0.6 && // Al menos 60% de píxeles similares en el área
+    distanceFromEdge < maxDistanceToAnalyze && // Está cerca del borde
+    alpha > 200 // Tiene alpha alto (no es transparencia obvia)
+  )
 }
 
 /**
@@ -405,7 +483,7 @@ function hasLowContentDensity(
           totalPixels++
           
           // Considerar válido si tiene alpha alto y no es color de fondo típico
-          if (alpha > 150 && !(r > 240 && g > 240 && b > 240)) {
+          if (alpha > 120 && !(r > 220 && g > 210 && b > 180)) { // Más agresivo con beiges
             validPixels++
           }
         }
@@ -416,7 +494,138 @@ function hasLowContentDensity(
   if (totalPixels === 0) return true
   
   const density = validPixels / totalPixels
-  return density < 0.3  // Menos del 30% de píxeles válidos = baja densidad
+  return density < 0.4  // Menos del 40% de píxeles válidos = baja densidad
+}
+
+/**
+ * Aplica un recorte más agresivo específicamente para imágenes rotadas
+ * con fondos texturizados que necesitan ser eliminados completamente
+ */
+function applyAggressiveCrop(
+  bounds: BoundingBox,
+  canvasWidth: number,
+  canvasHeight: number,
+  imageData: Uint8ClampedArray
+): BoundingBox {
+  
+  let { x, y, width, height } = bounds
+  
+  // Reducción agresiva desde cada borde
+  const maxReduction = 0.15 // Máximo 15% de reducción por lado
+  const stepSize = Math.max(2, Math.floor(Math.min(width, height) * 0.01))
+  
+  // Recortar desde arriba
+  let topReduction = 0
+  while (topReduction < height * maxReduction) {
+    const sampleHeight = Math.min(stepSize * 3, height - topReduction)
+    if (hasLowContentDensityAggressive(imageData, canvasWidth, x, y + topReduction, width, sampleHeight)) {
+      topReduction += stepSize
+    } else {
+      break
+    }
+  }
+  
+  // Recortar desde abajo
+  let bottomReduction = 0
+  while (bottomReduction < height * maxReduction) {
+    const sampleHeight = Math.min(stepSize * 3, height - bottomReduction)
+    if (hasLowContentDensityAggressive(imageData, canvasWidth, x, y + height - bottomReduction - sampleHeight, width, sampleHeight)) {
+      bottomReduction += stepSize
+    } else {
+      break
+    }
+  }
+  
+  // Recortar desde la izquierda
+  let leftReduction = 0
+  while (leftReduction < width * maxReduction) {
+    const sampleWidth = Math.min(stepSize * 3, width - leftReduction)
+    if (hasLowContentDensityAggressive(imageData, canvasWidth, x + leftReduction, y, sampleWidth, height)) {
+      leftReduction += stepSize
+    } else {
+      break
+    }
+  }
+  
+  // Recortar desde la derecha
+  let rightReduction = 0
+  while (rightReduction < width * maxReduction) {
+    const sampleWidth = Math.min(stepSize * 3, width - rightReduction)
+    if (hasLowContentDensityAggressive(imageData, canvasWidth, x + width - rightReduction - sampleWidth, y, sampleWidth, height)) {
+      rightReduction += stepSize
+    } else {
+      break
+    }
+  }
+  
+  // Aplicar reducciones
+  return {
+    x: Math.max(0, x + leftReduction),
+    y: Math.max(0, y + topReduction),
+    width: Math.max(50, width - leftReduction - rightReduction), // Mínimo 50px de ancho
+    height: Math.max(50, height - topReduction - bottomReduction) // Mínimo 50px de alto
+  }
+}
+
+/**
+ * Versión más agresiva de detección de baja densidad
+ * Específicamente diseñada para eliminar fondos texturizados
+ */
+function hasLowContentDensityAggressive(
+  imageData: Uint8ClampedArray,
+  canvasWidth: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): boolean {
+  
+  let validPixels = 0
+  let totalPixels = 0
+  let backgroundPixels = 0
+  
+  for (let dy = 0; dy < height; dy++) {
+    for (let dx = 0; dx < width; dx++) {
+      const pixelX = Math.floor(x + dx)
+      const pixelY = Math.floor(y + dy)
+      
+      if (pixelX >= 0 && pixelX < canvasWidth && pixelY >= 0) {
+        const pixelIndex = (pixelY * canvasWidth + pixelX) * 4
+        if (pixelIndex < imageData.length) {
+          const alpha = imageData[pixelIndex + 3]
+          const r = imageData[pixelIndex]
+          const g = imageData[pixelIndex + 1]
+          const b = imageData[pixelIndex + 2]
+          
+          totalPixels++
+          
+          // Detectar píxeles de fondo texturizado (beiges, cremas, etc.)
+          const isBackgroundColor = (
+            // Beiges/cremas típicos de alfombras
+            (r > 200 && g > 190 && b > 160 && r - b > 15) ||
+            // Colores muy claros (blancos/grises)
+            (r > 230 && g > 230 && b > 230) ||
+            // Colores con baja saturación
+            (Math.max(r, g, b) - Math.min(r, g, b) < 20 && r > 180)
+          )
+          
+          if (isBackgroundColor) {
+            backgroundPixels++
+          } else if (alpha > 100) {
+            validPixels++
+          }
+        }
+      }
+    }
+  }
+  
+  if (totalPixels === 0) return true
+  
+  const backgroundRatio = backgroundPixels / totalPixels
+  const validRatio = validPixels / totalPixels
+  
+  // Es baja densidad si hay muchos píxeles de fondo y pocos válidos
+  return backgroundRatio > 0.5 || validRatio < 0.3
 }
 
 /**
