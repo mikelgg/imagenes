@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batería de Pruebas - Ángulos de Rotación</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .controls input, .controls button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .controls button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .controls button:hover {
+            background: #0056b3;
+        }
+        .controls button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .result-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background: white;
+        }
+        .result-item h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        canvas {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+        }
+        .info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .progress {
+            margin: 20px 0;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        .progress-bar {
+            height: 20px;
+            background: #007bff;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .warning { color: #ffc107; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Batería de Pruebas - Ángulos de Rotación</h1>
+        
+        <div class="controls">
+            <input type="file" id="fileInput" accept="image/*">
+            <select id="thresholdSelect">
+                <option value="8">Threshold: 8</option>
+                <option value="12" selected>Threshold: 12 (Recomendado)</option>
+                <option value="16">Threshold: 16</option>
+                <option value="20">Threshold: 20</option>
+            </select>
+            <select id="overcropSelect">
+                <option value="0">Overcrop: 0px</option>
+                <option value="1" selected>Overcrop: 1px</option>
+                <option value="2">Overcrop: 2px</option>
+            </select>
+            <button id="startTestBtn">🚀 Iniciar Batería de Pruebas</button>
+            <button id="clearResultsBtn">🗑️ Limpiar Resultados</button>
+        </div>
+
+        <div class="progress" id="progressContainer" style="display: none;">
+            <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+            <div class="status" id="statusText">Preparando...</div>
+        </div>
+
+        <div class="results" id="resultsContainer"></div>
+    </div>
+
+    <script>
+        // Ángulos de prueba según especificación
+        const TEST_ANGLES = [1, 5, 12, 17, 23, 37, 45, 61, 89];
+        
+        // Referencias DOM
+        const fileInput = document.getElementById('fileInput');
+        const thresholdSelect = document.getElementById('thresholdSelect');
+        const overcropSelect = document.getElementById('overcropSelect');
+        const startTestBtn = document.getElementById('startTestBtn');
+        const clearResultsBtn = document.getElementById('clearResultsBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const statusText = document.getElementById('statusText');
+        const resultsContainer = document.getElementById('resultsContainer');
+
+        let currentFile = null;
+        let isTestRunning = false;
+
+        // Cargar imagen
+        fileInput.addEventListener('change', (e) => {
+            currentFile = e.target.files[0];
+            if (currentFile) {
+                console.log(`Imagen cargada: ${currentFile.name} (${(currentFile.size/1024).toFixed(1)}KB)`);
+            }
+        });
+
+        // Limpiar resultados
+        clearResultsBtn.addEventListener('click', () => {
+            resultsContainer.innerHTML = '';
+        });
+
+        // Iniciar batería de pruebas
+        startTestBtn.addEventListener('click', async () => {
+            if (!currentFile) {
+                alert('Selecciona una imagen primero');
+                return;
+            }
+
+            if (isTestRunning) {
+                alert('Prueba en progreso, espera a que termine');
+                return;
+            }
+
+            isTestRunning = true;
+            startTestBtn.disabled = true;
+            progressContainer.style.display = 'block';
+            resultsContainer.innerHTML = '';
+
+            const threshold = parseInt(thresholdSelect.value);
+            const overcrop = parseInt(overcropSelect.value);
+
+            console.log(`🧪 Iniciando batería de pruebas:`);
+            console.log(`- Threshold: ${threshold}`);
+            console.log(`- Overcrop: ${overcrop}px`);
+            console.log(`- Ángulos: ${TEST_ANGLES.join(', ')}°`);
+
+            try {
+                for (let i = 0; i < TEST_ANGLES.length; i++) {
+                    const angle = TEST_ANGLES[i];
+                    const progress = ((i + 1) / TEST_ANGLES.length) * 100;
+                    
+                    progressBar.style.width = `${progress}%`;
+                    statusText.textContent = `Procesando ${angle}° (${i + 1}/${TEST_ANGLES.length})`;
+                    statusText.className = 'status';
+
+                    await processAngle(angle, threshold, overcrop, i);
+                    
+                    // Pequeña pausa para no saturar el worker
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                statusText.textContent = '✅ Batería de pruebas completada';
+                statusText.className = 'status success';
+                
+                console.log('🎉 Batería de pruebas completada exitosamente');
+
+            } catch (error) {
+                console.error('❌ Error en batería de pruebas:', error);
+                statusText.textContent = `❌ Error: ${error.message}`;
+                statusText.className = 'status error';
+            } finally {
+                isTestRunning = false;
+                startTestBtn.disabled = false;
+            }
+        });
+
+        async function processAngle(angle, threshold, overcrop, index) {
+            return new Promise((resolve, reject) => {
+                try {
+                    // Crear worker
+                    const worker = new Worker('/workers/image-processor.worker.mjs', { type: 'module' });
+                    
+                    worker.onmessage = async (e) => {
+                        const { success, result, error } = e.data;
+                        
+                        if (success) {
+                            const blob = result.blob;
+                            const debugInfo = result.debugInfo;
+                            
+                            // Crear elemento de resultado
+                            const resultItem = createResultItem(angle, blob, debugInfo, threshold, overcrop);
+                            resultsContainer.appendChild(resultItem);
+                            
+                            console.log(`✅ ${angle}° procesado:`, debugInfo);
+                            resolve();
+                            
+                        } else {
+                            console.error(`❌ Error en ${angle}°:`, error);
+                            const errorItem = createErrorItem(angle, error);
+                            resultsContainer.appendChild(errorItem);
+                            reject(new Error(`Error en ${angle}°: ${error}`));
+                        }
+                        
+                        worker.terminate();
+                    };
+
+                    worker.onerror = (error) => {
+                        console.error(`❌ Worker error en ${angle}°:`, error);
+                        const errorItem = createErrorItem(angle, error.message);
+                        resultsContainer.appendChild(errorItem);
+                        reject(error);
+                    };
+
+                    // Enviar trabajo al worker
+                    const options = {
+                        rotation: angle,
+                        cropX: 0,
+                        cropY: 0,
+                        cropWidth: 0,
+                        cropHeight: 0,
+                        resizeWidth: 0,
+                        resizeHeight: 0,
+                        maintainAspectRatio: true,
+                        quality: 90,
+                        format: 'jpeg',
+                        preserveExif: false,
+                        debugMode: true,
+                        thresholdAlpha: threshold,
+                        overcropPixels: overcrop
+                    };
+
+                    worker.postMessage({ file: currentFile, options });
+
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function createResultItem(angle, blob, debugInfo, threshold, overcrop) {
+            const item = document.createElement('div');
+            item.className = 'result-item';
+            
+            const canvas = document.createElement('canvas');
+            const img = new Image();
+            
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, img.width, img.height);
+                ctx.drawImage(img, 0, 0);
+            };
+            
+            img.src = URL.createObjectURL(blob);
+            
+            const reduction = debugInfo.reduction || 'N/A';
+            const method = debugInfo.method || 'unknown';
+            
+            item.innerHTML = `
+                <h4>${angle}° - ${method}</h4>
+                <canvas></canvas>
+                <div class="info">
+                    <strong>Tamaño:</strong> ${debugInfo.croppedSize || 'N/A'}<br>
+                    <strong>Reducción:</strong> ${reduction}<br>
+                    <strong>Threshold:</strong> ${threshold}<br>
+                    <strong>Overcrop:</strong> ${overcrop}px<br>
+                    <strong>Archivo:</strong> ${(blob.size/1024).toFixed(1)}KB
+                </div>
+            `;
+            
+            item.querySelector('canvas').replaceWith(canvas);
+            
+            return item;
+        }
+
+        function createErrorItem(angle, error) {
+            const item = document.createElement('div');
+            item.className = 'result-item';
+            item.style.borderColor = '#dc3545';
+            
+            item.innerHTML = `
+                <h4 style="color: #dc3545;">${angle}° - ERROR</h4>
+                <div style="padding: 20px; text-align: center; color: #666;">
+                    ❌ Error al procesar
+                </div>
+                <div class="info" style="color: #dc3545;">
+                    <strong>Error:</strong> ${error}
+                </div>
+            `;
+            
+            return item;
+        }
+
+        console.log('🧪 Batería de pruebas inicializada');
+        console.log('💡 Selecciona una imagen y presiona "Iniciar Batería de Pruebas"');
+    </script>
+</body>
+</html>

@@ -2,6 +2,115 @@
 // Procesamiento de imágenes con auto-recorte inteligente
 
 /**
+ * Auto-recorte con compensación de márgenes para imágenes rotadas
+ * Maneja correctamente los márgenes añadidos durante la rotación
+ */
+function autoCropByAlphaWithMarginCompensation(input, threshold, rotationAngle, originalWidth, originalHeight) {
+  try {
+    // Crear canvas temporal si la entrada es ImageBitmap
+    let sourceCanvas
+    
+    if (input instanceof ImageBitmap) {
+      sourceCanvas = new OffscreenCanvas(input.width, input.height)
+      const ctx = sourceCanvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('No se pudo obtener contexto 2D')
+      }
+      ctx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height)
+      ctx.drawImage(input, 0, 0)
+    } else {
+      sourceCanvas = input
+    }
+
+    const ctx = sourceCanvas.getContext('2d')
+    if (!ctx) {
+      throw new Error('No se pudo obtener contexto 2D del canvas')
+    }
+
+    // Obtener datos de imagen
+    const imageData = ctx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height)
+    const data = imageData.data
+    
+    // Calcular bounding box de píxeles con alpha > threshold
+    const boundingBox = calculateAlphaBoundingBox(data, sourceCanvas.width, sourceCanvas.height, threshold)
+    
+    if (!boundingBox) {
+      // No se encontró contenido válido - devolver canvas original como fallback seguro
+      return {
+        success: false,
+        boundingBox: { x: 0, y: 0, width: sourceCanvas.width, height: sourceCanvas.height },
+        canvas: sourceCanvas,
+        debugInfo: { reason: 'No content found', threshold, rotationAngle }
+      }
+    }
+
+    // Aplicar overcrop opcional (1-2 píxeles) para eliminar halo residual
+    const overcropPixels = 1 // Configurable: 0, 1, o 2
+    const adjustedBounds = {
+      x: Math.max(0, boundingBox.x + overcropPixels),
+      y: Math.max(0, boundingBox.y + overcropPixels),
+      width: Math.max(1, boundingBox.width - (overcropPixels * 2)),
+      height: Math.max(1, boundingBox.height - (overcropPixels * 2))
+    }
+
+    // Crear canvas recortado
+    const croppedCanvas = new OffscreenCanvas(adjustedBounds.width, adjustedBounds.height)
+    const croppedCtx = croppedCanvas.getContext('2d')
+    if (!croppedCtx) {
+      throw new Error('No se pudo crear contexto para canvas recortado')
+    }
+
+    // Copiar solo la región del bounding box
+    croppedCtx.clearRect(0, 0, adjustedBounds.width, adjustedBounds.height)
+    croppedCtx.drawImage(
+      sourceCanvas,
+      adjustedBounds.x, adjustedBounds.y, adjustedBounds.width, adjustedBounds.height,
+      0, 0, adjustedBounds.width, adjustedBounds.height
+    )
+
+    const reduction = 1 - (adjustedBounds.width * adjustedBounds.height) / (sourceCanvas.width * sourceCanvas.height)
+
+    return {
+      success: true,
+      boundingBox: adjustedBounds,
+      canvas: croppedCanvas,
+      debugInfo: {
+        originalSize: `${sourceCanvas.width}x${sourceCanvas.height}`,
+        croppedSize: `${adjustedBounds.width}x${adjustedBounds.height}`,
+        reduction: `${Math.round(reduction * 100)}%`,
+        threshold,
+        rotationAngle,
+        overcropPixels,
+        method: 'alpha_with_margin_compensation'
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error en autoCropByAlphaWithMarginCompensation:', error)
+    
+    // Fallback seguro - devolver canvas original
+    let fallbackCanvas
+    if (input instanceof ImageBitmap) {
+      fallbackCanvas = new OffscreenCanvas(input.width, input.height)
+      const fallbackCtx = fallbackCanvas.getContext('2d')
+      if (fallbackCtx) {
+        fallbackCtx.clearRect(0, 0, input.width, input.height)
+        fallbackCtx.drawImage(input, 0, 0)
+      }
+    } else {
+      fallbackCanvas = input
+    }
+      
+    return {
+      success: false,
+      boundingBox: { x: 0, y: 0, width: fallbackCanvas.width, height: fallbackCanvas.height },
+      canvas: fallbackCanvas,
+      debugInfo: { error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }
+}
+
+/**
  * Auto-recorte basado en píxeles con alpha > umbral
  * Encuentra el bounding box mínimo que contiene píxeles no-transparentes
  */
@@ -119,8 +228,8 @@ function calculateAlphaBoundingBox(data, width, height, threshold) {
       // 1. Píxeles completamente transparentes = fondo
       if (alpha <= threshold) continue
       
-      // 2. Píxeles muy transparentes (interpolación) = probablemente fondo  
-      if (alpha < 30) continue
+             // 2. Píxeles muy transparentes (interpolación) = probablemente fondo  
+       if (alpha < threshold) continue
       
       // 3. Detectar píxeles de "fondo claro" típicos de rotación
       // Estos son píxeles que aparecen por interpolación en los bordes
@@ -133,8 +242,8 @@ function calculateAlphaBoundingBox(data, width, height, threshold) {
         (Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && r > 235)
       )
       
-      // 4. Si el píxel tiene alpha medio y es color de fondo, probablemente es borde
-      if (alpha < 200 && isLightBackground) continue
+             // 4. Si el píxel tiene alpha bajo y es color de fondo, probablemente es borde
+       if (alpha < (threshold + 50) && isLightBackground) continue
       
       // 5. PÍXEL VÁLIDO: Alpha significativo y no es color de fondo típico
       minX = Math.min(minX, x)
@@ -193,8 +302,8 @@ function refineBoundingBox(data, width, height, bbox) {
       
       totalPixels++
       
-      // Píxel sospechoso de ser borde de rotación
-      if (alpha < 100 || (r > 230 && g > 220 && b > 180)) {
+             // Píxel sospechoso de ser borde de rotación
+       if (alpha < 150 || (r > 230 && g > 220 && b > 180)) {
         suspiciousPixels++
       }
     }
@@ -221,7 +330,7 @@ function refineBoundingBox(data, width, height, bbox) {
       
       totalPixels++
       
-      if (alpha < 100 || (r > 230 && g > 220 && b > 180)) {
+      if (alpha < 150 || (r > 230 && g > 220 && b > 180)) {
         suspiciousPixels++
       }
     }
@@ -247,7 +356,7 @@ function refineBoundingBox(data, width, height, bbox) {
       
       totalPixels++
       
-      if (alpha < 100 || (r > 230 && g > 220 && b > 180)) {
+      if (alpha < 150 || (r > 230 && g > 220 && b > 180)) {
         suspiciousPixels++
       }
     }
@@ -273,7 +382,7 @@ function refineBoundingBox(data, width, height, bbox) {
       
       totalPixels++
       
-      if (alpha < 100 || (r > 230 && g > 220 && b > 180)) {
+      if (alpha < 150 || (r > 230 && g > 220 && b > 180)) {
         suspiciousPixels++
       }
     }
@@ -398,6 +507,8 @@ function rotateImage(imageBitmap, angleDegrees) {
 async function processImage(img, options) {
   try {
     timer.start('totalProcessing')
+    timer.start('decode')
+    timer.end('decode')
     
     if (typeof OffscreenCanvas === 'undefined') {
       throw new Error('OffscreenCanvas no disponible en este entorno')
@@ -413,44 +524,35 @@ async function processImage(img, options) {
     let workingCanvas
     let debugInfo = {}
 
-    // PASO 1: Rotación (si se especifica)
-    if (options.rotation !== 0) {
-      const rotatedResult = rotateImage(img, options.rotation)
-      workingCanvas = rotatedResult instanceof ImageBitmap 
-        ? createCanvasFromImageBitmap(rotatedResult)
-        : rotatedResult
-    } else {
-      // Sin rotación: crear canvas desde ImageBitmap
-      workingCanvas = createCanvasFromImageBitmap(img)
-    }
+         // PASO 1: Rotación (si se especifica)
+     timer.start('rotate')
+     if (options.rotation !== 0) {
+       const rotatedResult = rotateImage(img, options.rotation)
+       workingCanvas = rotatedResult instanceof ImageBitmap 
+         ? createCanvasFromImageBitmap(rotatedResult)
+         : rotatedResult
+     } else {
+       // Sin rotación: crear canvas desde ImageBitmap
+       workingCanvas = createCanvasFromImageBitmap(img)
+     }
+     timer.end('rotate')
 
     // PASO 2: Auto-recorte mejorado (SIEMPRE aplicar)
     timer.start('autoCropByAlpha')
     
-    // Para rotaciones, usar threshold = 0 y ser más agresivo
-    const isRotated = options.rotation !== 0
-    const threshold = isRotated ? 0 : 0  // Siempre threshold 0 para mejor precisión
+         // Para rotaciones, usar threshold apropiado para eliminar halo de antialiasing
+     const isRotated = options.rotation !== 0
+     const threshold = isRotated ? 12 : 0  // Threshold 12 para eliminar halo de antialiasing en rotaciones
     
-    // Para rotaciones, usar la fórmula matemática del legacy directamente
-    let autoCropResult
-    if (isRotated && options.rotation) {
-      // Usar la fórmula matemática exacta del script Python legacy
-      const inscribedBounds = calculateInscribedRectangle(workingCanvas.width, workingCanvas.height, options.rotation)
-      autoCropResult = {
-        success: true,
-        boundingBox: inscribedBounds,
-        canvas: cropCanvasToBounds(workingCanvas, inscribedBounds),
-        debugInfo: {
-          originalSize: `${workingCanvas.width}x${workingCanvas.height}`,
-          croppedSize: `${inscribedBounds.width}x${inscribedBounds.height}`,
-          method: 'legacy_math_formula',
-          rotation: options.rotation
-        }
-      }
-    } else {
-      // Para imágenes sin rotación, usar el auto-crop normal
-      autoCropResult = autoCropByAlpha(workingCanvas, threshold)
-    }
+         // Auto-recorte mejorado con threshold apropiado
+     let autoCropResult
+     if (isRotated) {
+       // Para rotaciones: usar auto-crop con threshold 12 y compensar márgenes
+       autoCropResult = autoCropByAlphaWithMarginCompensation(workingCanvas, threshold, options.rotation, img.width, img.height)
+     } else {
+       // Para imágenes sin rotación: usar el auto-crop normal
+       autoCropResult = autoCropByAlpha(workingCanvas, threshold)
+     }
     
     if (autoCropResult.success) {
       const originalArea = workingCanvas.width * workingCanvas.height
@@ -480,15 +582,21 @@ async function processImage(img, options) {
       ...autoCropResult.debugInfo,
       wasRotated: isRotated
     }
-    timer.end('autoCropByAlpha')
-    
-    // Modo debug: crear visualización de máscara alpha
-    if (DEBUG_MODE && options.debugMode) {
-      debugInfo.alphaMask = createAlphaDebugVisualization(
-        autoCropResult.canvas || workingCanvas, 
-        0
-      )
-    }
+         timer.end('autoCropByAlpha')
+     
+     // Modo debug: crear visualización de máscara alpha y bbox
+     if (DEBUG_MODE && options.debugMode) {
+       timer.start('debugVisualization')
+       debugInfo.alphaMask = createAlphaDebugVisualization(
+         autoCropResult.canvas || workingCanvas, 
+         threshold
+       )
+       debugInfo.bboxOverlay = createBoundingBoxOverlay(
+         workingCanvas,
+         autoCropResult.boundingBox
+       )
+       timer.end('debugVisualization')
+     }
 
     // PASO 3: Recorte manual del usuario (si se especifica)
     if (options.cropWidth > 0 && options.cropHeight > 0) {
@@ -715,6 +823,45 @@ function cropCanvasToBounds(canvas, bounds) {
   )
   
   return croppedCanvas
+}
+
+/**
+ * Crear overlay del bounding box para debug
+ * Dibuja un rectángulo de color sobre el área recortada
+ */
+function createBoundingBoxOverlay(canvas, boundingBox) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+
+  const debugCanvas = new OffscreenCanvas(canvas.width, canvas.height)
+  const debugCtx = debugCanvas.getContext('2d')
+  if (!debugCtx) return canvas
+
+  // Dibujar imagen original
+  debugCtx.drawImage(canvas, 0, 0)
+
+  // Dibujar rectángulo del bounding box
+  debugCtx.strokeStyle = '#00ff00' // Verde
+  debugCtx.lineWidth = 2
+  debugCtx.setLineDash([5, 5]) // Línea punteada
+  debugCtx.strokeRect(
+    boundingBox.x, 
+    boundingBox.y, 
+    boundingBox.width, 
+    boundingBox.height
+  )
+
+  // Agregar texto con información del bbox
+  debugCtx.fillStyle = '#00ff00'
+  debugCtx.font = '12px Arial'
+  debugCtx.fillText(
+    `BBox: ${boundingBox.width}x${boundingBox.height}`,
+    boundingBox.x + 5,
+    boundingBox.y + 20
+  )
+
+  devLog('🔍 Overlay de bounding box creado')
+  return debugCanvas
 }
 
 /**

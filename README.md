@@ -40,17 +40,23 @@ Procesa hasta 20 imágenes con rotación automática, recorte inteligente y redi
 ## 🧠 Algoritmo de Auto-Crop Mejorado
 
 ### ✨ Nuevas Características
-- **Detección adaptativa**: Analiza los bordes de la imagen para detectar patrones de rotación
+- **Threshold Alpha configurable**: Usa threshold 12 para rotaciones (elimina halo de antialiasing)
 - **Eliminación de píxeles interpolados**: Identifica y descarta píxeles generados por interpolación
-- **Crop inteligente**: Busca el rectángulo inscrito más grande que evite esquinas vacías
-- **Análisis de densidad**: Evalúa la densidad de contenido real vs bordes artificiales
-- **Margen de seguridad**: Preserva líneas finas y contenido importante
+- **Overcrop opcional**: Permite recortar 1-2 píxeles adicionales para eliminar halo residual
+- **Compensación de márgenes**: Maneja correctamente los márgenes añadidos durante la rotación
+- **Pipeline optimizado**: Orden correcto de operaciones (rotación → auto-recorte → exportación)
 
 ### 🔧 Criterios de Detección
-1. **Transparencia**: Píxeles completamente transparentes o con alpha muy bajo
+1. **Transparencia**: Píxeles con alpha ≤ threshold (12 para rotaciones)
 2. **Colores interpolados**: Detección de tonos beige/blanquecinos típicos de rotación
 3. **Proximidad a bordes**: Análisis contextual de píxeles cerca de los bordes
 4. **Densidad de contenido**: Evaluación de regiones con baja densidad de píxeles válidos
+
+### 🧪 Modo Debug
+- **Overlay de bounding box**: Visualiza el área recortada en verde
+- **Máscara alpha**: Resalta píxeles transparentes en rojo
+- **Controles de debug**: Ajuste en tiempo real de threshold y overcrop
+- **Batería de pruebas**: Test automático con múltiples ángulos (1°, 5°, 12°, 17°, 23°, 37°, 45°, 61°, 89°)
 
 ### 🎯 Resultado
 - ✅ **Imágenes perfectamente rectangulares** después de rotación
