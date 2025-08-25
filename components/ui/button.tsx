@@ -7,12 +7,12 @@ import { motion, type HTMLMotionProps } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-2xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40 disabled:pointer-events-none disabled:opacity-50 tracking-tight",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-2xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:pointer-events-none disabled:opacity-50 tracking-tight",
   {
     variants: {
       variant: {
         primary:
-          "bg-gradient-to-br from-emerald-400 via-cyan-400 to-violet-500 text-white shadow-glow hover:shadow-glow-sm hover:ring-1 hover:ring-cyan-400/30 relative overflow-hidden",
+          "bg-accent-blue text-white shadow-glow hover:bg-accent-blue-hover hover:shadow-glow-sm hover:ring-1 hover:ring-blue-500/30 relative overflow-hidden font-semibold",
         secondary:
           "bg-surface border border-border text-text-primary hover:bg-muted hover:border-text-muted/20 shadow-surface",
         ghost: 

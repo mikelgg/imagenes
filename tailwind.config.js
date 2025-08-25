@@ -11,46 +11,46 @@ module.exports = {
         'inter': ['var(--font-inter-tight)', 'Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
-        // Dark theme color palette
-        bg: '#0B0F19',
-        surface: '#111827',
-        muted: '#1F2937',
-        border: 'rgba(255, 255, 255, 0.06)',
-        'text-primary': '#E5E7EB',
-        'text-muted': '#9CA3AF',
+        // High contrast dark theme - elegant black
+        bg: '#000000',
+        surface: '#0A0A0A',
+        muted: '#1A1A1A',
+        border: 'rgba(255, 255, 255, 0.08)',
+        'text-primary': '#FFFFFF',
+        'text-muted': '#A3A3A3',
         
-        // Gradient accent colors
-        'accent-from': '#7C3AED',
-        'accent-to': '#06B6D4',
+        // Blue accents for key actions only
+        'accent-blue': '#3B82F6',
+        'accent-blue-hover': '#2563EB',
         
-        // Shadcn/ui compatibility colors
-        background: '#0B0F19',
-        foreground: '#E5E7EB',
+        // Shadcn/ui compatibility colors - high contrast
+        background: '#000000',
+        foreground: '#FFFFFF',
         primary: {
-          DEFAULT: '#06B6D4',
-          foreground: '#0B0F19',
+          DEFAULT: '#3B82F6',
+          foreground: '#FFFFFF',
         },
         secondary: {
-          DEFAULT: '#1F2937',
-          foreground: '#E5E7EB',
+          DEFAULT: '#1A1A1A',
+          foreground: '#FFFFFF',
         },
         destructive: {
           DEFAULT: '#EF4444',
-          foreground: '#FEFEFE',
+          foreground: '#FFFFFF',
         },
-        ring: 'rgba(6, 182, 212, 0.3)',
-        input: '#111827',
+        ring: 'rgba(59, 130, 246, 0.3)',
+        input: '#0A0A0A',
         accent: {
-          DEFAULT: '#1F2937',
-          foreground: '#E5E7EB',
+          DEFAULT: '#1A1A1A',
+          foreground: '#FFFFFF',
         },
         popover: {
-          DEFAULT: '#111827',
-          foreground: '#E5E7EB',
+          DEFAULT: '#0A0A0A',
+          foreground: '#FFFFFF',
         },
         card: {
-          DEFAULT: '#111827',
-          foreground: '#E5E7EB',
+          DEFAULT: '#0A0A0A',
+          foreground: '#FFFFFF',
         },
       },
       borderRadius: {
@@ -61,9 +61,9 @@ module.exports = {
         '2xl': '1.5rem',
       },
       boxShadow: {
-        'glow': '0 8px 30px rgba(32, 211, 238, 0.25)',
-        'glow-sm': '0 4px 15px rgba(32, 211, 238, 0.15)',
-        'surface': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+        'glow': '0 8px 30px rgba(59, 130, 246, 0.25)',
+        'glow-sm': '0 4px 15px rgba(59, 130, 246, 0.15)',
+        'surface': '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)',
       },
       animation: {
         'fade-up': 'fadeUp 0.28s ease-out',
@@ -109,13 +109,16 @@ module.exports = {
   },
   safelist: [
     'bg-gradient-to-br',
-    'from-emerald-400',
-    'via-cyan-400', 
-    'to-violet-500',
+    'from-blue-500',
+    'via-blue-400', 
+    'to-blue-600',
     'shadow-glow',
     'shadow-glow-sm',
-    'ring-cyan-400/30',
-    'ring-cyan-400/40',
+    'ring-blue-500/30',
+    'ring-blue-500/40',
+    'text-accent-blue',
+    'bg-accent-blue',
+    'hover:bg-accent-blue-hover',
   ],
   plugins: [],
 }

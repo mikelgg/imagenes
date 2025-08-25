@@ -76,6 +76,8 @@ export default function HomePage() {
   const [consentGiven, setConsentGiven] = useState(false)
   const [currentFileName, setCurrentFileName] = useState<string>('')
   const [showExifToast, setShowExifToast] = useState(false)
+  const [showS3Toast, setShowS3Toast] = useState(false)
+  const [showS3ErrorToast, setShowS3ErrorToast] = useState(false)
   
   // Keyboard shortcuts
   useEffect(() => {
@@ -239,20 +241,45 @@ export default function HomePage() {
 
   const uploadSampleImage = async (processedImage: ProcessedImage) => {
     try {
-      const formData = new FormData()
-      const batchId = crypto.randomUUID()
-      
-      formData.append('image', processedImage.processedBlob, processedImage.filename)
-      formData.append('batchId', batchId)
-      formData.append('createdAt', new Date().toISOString())
-
-      await fetch('/api/temp-upload', {
+      // Step 1: Get presigned URL from our API
+      const response = await fetch('/api/upload', {
         method: 'POST',
-        body: formData
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          filename: processedImage.filename,
+          contentType: processedImage.processedBlob.type,
+          fileSize: processedImage.processedBlob.size,
+        }),
       })
+
+      if (!response.ok) {
+        throw new Error(`Failed to get upload URL: ${response.status}`)
+      }
+
+      const { url, headers } = await response.json()
+
+      // Step 2: Upload directly to S3 using presigned URL
+      const uploadResponse = await fetch(url, {
+        method: 'PUT',
+        headers: headers,
+        body: processedImage.processedBlob,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Failed to upload to S3: ${uploadResponse.status}`)
+      }
+
+      // Show success toast
+      setShowS3Toast(true)
+      setTimeout(() => setShowS3Toast(false), 4000)
+
     } catch (error) {
       console.error('Failed to upload sample image:', error)
-      // Don't show error to user as this is optional
+      // Show error toast
+      setShowS3ErrorToast(true)
+      setTimeout(() => setShowS3ErrorToast(false), 4000)
     }
   }
 
@@ -365,6 +392,28 @@ export default function HomePage() {
         disabled={isProcessing}
         showExifNotice={true}
       />
+
+      {/* Consent Checkbox */}
+      <motion.div
+        className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/50"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+      >
+        <input
+          type="checkbox"
+          id="consent-checkbox"
+          checked={consentGiven}
+          onChange={(e) => setConsentGiven(e.target.checked)}
+          className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary focus:ring-2"
+        />
+        <label 
+          htmlFor="consent-checkbox" 
+          className="text-xs text-text-muted cursor-pointer flex-1"
+        >
+          Permitir guardar <strong>1 muestra</strong> temporalmente (24h) para mejorar el servicio
+        </label>
+      </motion.div>
 
       {/* Process Button */}
       {!isProcessing && (
@@ -524,6 +573,58 @@ export default function HomePage() {
                 </p>
                 <p className="text-xs text-text-muted">
                   EXIF eliminado de las imágenes exportadas
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* S3 Success Toast */}
+      {showS3Toast && (
+        <motion.div
+          className="fixed bottom-6 left-6 z-50"
+          initial={{ opacity: 0, x: -100, scale: 0.8 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: -100, scale: 0.8 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="bg-surface border border-border rounded-xl p-4 shadow-lg max-w-sm">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-text-primary">
+                  Muestra guardada
+                </p>
+                <p className="text-xs text-text-muted">
+                  Auto-borrado en 24h. Gracias por ayudar a mejorar el servicio
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* S3 Error Toast */}
+      {showS3ErrorToast && (
+        <motion.div
+          className="fixed bottom-6 left-6 z-50"
+          initial={{ opacity: 0, x: -100, scale: 0.8 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: -100, scale: 0.8 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="bg-surface border border-destructive/50 rounded-xl p-4 shadow-lg max-w-sm">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 bg-destructive rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-xs font-bold">!</span>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-text-primary">
+                  Error al guardar muestra
+                </p>
+                <p className="text-xs text-text-muted">
+                  El procesado continuó normalmente
                 </p>
               </div>
             </div>
