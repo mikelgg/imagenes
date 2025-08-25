@@ -10,7 +10,7 @@ import { EditorLayout } from '@/components/editor-layout'
 import { Panel } from '@/components/ui/panel'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Header } from '@/components/header'
+
 import { FooterNote } from '@/components/footer-note'
 import { ControlsToolbar } from '@/components/controls-toolbar'
 import { stripExif } from '@/lib/exif'
@@ -500,13 +500,6 @@ export default function HomePage() {
 
   return (
     <>
-      <Header 
-        onDownloadAll={handleDownloadAll}
-        onSaveTemporary={handleSaveTemporary}
-        onHelp={handleHelp}
-        hasProcessedImages={processedImages.length > 0}
-      />
-
       <EditorLayout 
         uploadPanel={uploadPanel}
         toolbarPanel={toolbarPanel}
