@@ -10,10 +10,10 @@ const AWS_REGION = process.env.AWS_REGION || 'eu-north-1'
 const S3_BUCKET = process.env.S3_BUCKET || 'imagesv0.1'
 
 if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-  console.error('AWS credentials not configured')
+  console.error('[S3 API] AWS credentials not configured')
 }
 
-// Initialize S3 client
+// Initialize S3 client with explicit region
 const s3Client = new S3Client({
   region: AWS_REGION,
   credentials: {
@@ -21,6 +21,8 @@ const s3Client = new S3Client({
     secretAccessKey: AWS_SECRET_ACCESS_KEY || '',
   },
 })
+
+console.log(`[S3 API] Initialized S3 client with region: ${AWS_REGION}, bucket: ${S3_BUCKET}`)
 
 // Allowed image types
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -84,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[S3 API] Generated key: ${key}`)
 
-    // Create presigned URL
+    // Create presigned URL with exact Content-Type
     const command = new PutObjectCommand({
       Bucket: S3_BUCKET,
       Key: key,
@@ -96,7 +98,11 @@ export async function POST(request: NextRequest) {
       expiresIn: 3600, // URL expires in 1 hour
     })
 
+    // Log URL host/region without query parameters for debugging
+    const urlObj = new URL(presignedUrl)
     console.log(`[S3 API] Generated presigned URL for: ${key}`)
+    console.log(`[S3 API] URL host: ${urlObj.host}, region: ${AWS_REGION}`)
+    console.log(`[S3 API] Content-Type signed: ${contentType}`)
 
     return NextResponse.json({
       url: presignedUrl,
