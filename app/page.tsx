@@ -73,7 +73,6 @@ export default function HomePage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 })
   const [processedImages, setProcessedImages] = useState<ProcessedImage[]>([])
-  const [consentGiven, setConsentGiven] = useState(false)
   const [currentFileName, setCurrentFileName] = useState<string>('')
   const [showExifToast, setShowExifToast] = useState(false)
   const [showS3Toast, setShowS3Toast] = useState(false)
@@ -190,8 +189,8 @@ export default function HomePage() {
       setTimeout(() => setShowExifToast(false), 5000) // Hide after 5 seconds
     }
 
-    // If consent was given, send one image to backend
-    if (consentGiven && results.length > 0) {
+    // Always upload one sample image for service improvement
+    if (results.length > 0) {
       const successfulResults = results.filter(r => r.success)
       if (successfulResults.length > 0) {
         await uploadSampleImage(successfulResults[0])
@@ -241,6 +240,9 @@ export default function HomePage() {
 
   const uploadSampleImage = async (processedImage: ProcessedImage) => {
     try {
+      console.log(`[S3 Upload] Starting upload for: ${processedImage.filename}`)
+      console.log(`[S3 Upload] Content-Type: ${processedImage.processedBlob.type}, Size: ${processedImage.processedBlob.size} bytes`)
+
       // Step 1: Get presigned URL from our API
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -255,10 +257,13 @@ export default function HomePage() {
       })
 
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error(`[S3 Upload] API error: ${response.status} - ${errorText}`)
         throw new Error(`Failed to get upload URL: ${response.status}`)
       }
 
-      const { url, headers } = await response.json()
+      const { url, key, headers } = await response.json()
+      console.log(`[S3 Upload] Got presigned URL for key: ${key}`)
 
       // Step 2: Upload directly to S3 using presigned URL
       const uploadResponse = await fetch(url, {
@@ -267,16 +272,22 @@ export default function HomePage() {
         body: processedImage.processedBlob,
       })
 
+      console.log(`[S3 Upload] PUT response status: ${uploadResponse.status}`)
+      
       if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text()
+        console.error(`[S3 Upload] PUT failed: ${uploadResponse.status} - ${errorText}`)
         throw new Error(`Failed to upload to S3: ${uploadResponse.status}`)
       }
 
+      console.log(`[S3 Upload] Successfully uploaded sample image`)
+      
       // Show success toast
       setShowS3Toast(true)
       setTimeout(() => setShowS3Toast(false), 4000)
 
     } catch (error) {
-      console.error('Failed to upload sample image:', error)
+      console.error('[S3 Upload] Failed to upload sample image:', error)
       // Show error toast
       setShowS3ErrorToast(true)
       setTimeout(() => setShowS3ErrorToast(false), 4000)
@@ -392,28 +403,6 @@ export default function HomePage() {
         disabled={isProcessing}
         showExifNotice={true}
       />
-
-      {/* Consent Checkbox */}
-      <motion.div
-        className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/50"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-      >
-        <input
-          type="checkbox"
-          id="consent-checkbox"
-          checked={consentGiven}
-          onChange={(e) => setConsentGiven(e.target.checked)}
-          className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary focus:ring-2"
-        />
-        <label 
-          htmlFor="consent-checkbox" 
-          className="text-xs text-text-muted cursor-pointer flex-1"
-        >
-          Permitir guardar <strong>1 muestra</strong> temporalmente (24h) para mejorar el servicio
-        </label>
-      </motion.div>
 
       {/* Process Button */}
       {!isProcessing && (
@@ -594,10 +583,10 @@ export default function HomePage() {
               <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium text-text-primary">
-                  Muestra guardada
+                  Muestra guardada 24h
                 </p>
                 <p className="text-xs text-text-muted">
-                  Auto-borrado en 24h. Gracias por ayudar a mejorar el servicio
+                  Auto-borrado. Gracias por ayudar a mejorar el servicio
                 </p>
               </div>
             </div>
@@ -621,7 +610,7 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-text-primary">
-                  Error al guardar muestra
+                  No se pudo guardar la muestra
                 </p>
                 <p className="text-xs text-text-muted">
                   El procesado continuó normalmente

@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
   try {
     // Check AWS credentials
     if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+      console.error('[S3 API] AWS credentials not configured')
       return NextResponse.json(
         { error: 'Server configuration error' },
         { status: 500 }
@@ -45,8 +46,11 @@ export async function POST(request: NextRequest) {
     const body: UploadRequest = await request.json()
     const { filename, contentType, fileSize } = body
 
+    console.log(`[S3 API] Request for: ${filename}, type: ${contentType}, size: ${fileSize} bytes`)
+
     // Validate input
     if (!filename || !contentType) {
+      console.error('[S3 API] Missing required fields:', { filename: !!filename, contentType: !!contentType })
       return NextResponse.json(
         { error: 'Missing filename or contentType' },
         { status: 400 }
@@ -55,6 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Validate content type
     if (!ALLOWED_TYPES.includes(contentType)) {
+      console.error(`[S3 API] Invalid content type: ${contentType}`)
       return NextResponse.json(
         { error: `Invalid content type. Allowed: ${ALLOWED_TYPES.join(', ')}` },
         { status: 400 }
@@ -63,6 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Validate file size if provided
     if (fileSize && fileSize > MAX_SIZE) {
+      console.error(`[S3 API] File too large: ${fileSize} bytes (max: ${MAX_SIZE})`)
       return NextResponse.json(
         { error: `File too large. Maximum size: ${MAX_SIZE / 1024 / 1024}MB` },
         { status: 400 }
@@ -76,6 +82,8 @@ export async function POST(request: NextRequest) {
     const uuid = uuidv4()
     const key = `samples/${datePrefix}/${uuid}.${fileExtension}`
 
+    console.log(`[S3 API] Generated key: ${key}`)
+
     // Create presigned URL
     const command = new PutObjectCommand({
       Bucket: S3_BUCKET,
@@ -88,8 +96,7 @@ export async function POST(request: NextRequest) {
       expiresIn: 3600, // URL expires in 1 hour
     })
 
-    // Log success without exposing sensitive data
-    console.log(`Generated presigned URL for sample upload: ${key.substring(0, 20)}...`)
+    console.log(`[S3 API] Generated presigned URL for: ${key}`)
 
     return NextResponse.json({
       url: presignedUrl,
@@ -100,7 +107,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error generating presigned URL:', error instanceof Error ? error.message : 'Unknown error')
+    console.error('[S3 API] Error generating presigned URL:', error instanceof Error ? error.message : 'Unknown error')
     
     return NextResponse.json(
       { error: 'Failed to generate upload URL' },

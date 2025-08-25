@@ -192,33 +192,68 @@ S3_ENDPOINT=                          # Opcional para servicios S3-compatible
 ADMIN_TOKEN=your_secure_admin_token   # Para acceso a /admin
 ```
 
-### Configuración S3 (Opcional)
+### Configuración S3 (Obligatorio para muestras)
 
-**Solo necesario si quieres habilitar almacenamiento temporal con consentimiento**
+**Necesario para el almacenamiento automático de muestras para mejorar el servicio**
 
-#### AWS S3:
+#### AWS S3 Setup:
+
+**1. Crear bucket:**
 ```bash
-# 1. Crear bucket
-aws s3 mb s3://your-bucket-name
-
-# 2. Configurar auto-eliminación (24h)
-aws s3api put-bucket-lifecycle-configuration \
-  --bucket your-bucket-name \
-  --lifecycle-configuration file://lifecycle.json
+aws s3 mb s3://imagesv0.1 --region eu-north-1
 ```
 
-**lifecycle.json:**
+**2. Configurar CORS para PUT desde navegador:**
+```json
+{
+  "CORSRules": [
+    {
+      "AllowedHeaders": ["Content-Type", "x-amz-acl", "x-amz-date", "x-amz-content-sha256", "Authorization"],
+      "AllowedMethods": ["PUT"],
+      "AllowedOrigins": ["*"],
+      "ExposeHeaders": ["ETag"]
+    }
+  ]
+}
+```
+
+**3. Configurar Lifecycle Rule (auto-borrado 24h):**
 ```json
 {
   "Rules": [
     {
-      "ID": "DeleteTempObjects",
-      "Status": "Enabled", 
-      "Filter": { "Prefix": "temp/" },
+      "ID": "DeleteSamples24h",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "samples/" },
       "Expiration": { "Days": 1 }
     }
   ]
 }
+```
+
+**4. Configurar IAM Policy:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:PutObjectAcl"
+      ],
+      "Resource": "arn:aws:s3:::imagesv0.1/samples/*"
+    }
+  ]
+}
+```
+
+**5. Variables de entorno requeridas:**
+```bash
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=eu-north-1
+S3_BUCKET=imagesv0.1
 ```
 
 #### Alternativas S3-Compatible:

@@ -7,7 +7,7 @@ export function FooterNote() {
     <footer className="mt-12 py-6 border-t border-border/50">
       <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8">
         <p className="text-xs text-text-muted/70 leading-relaxed">
-          * Para mejorar el servicio, se almacenará temporalmente <strong>UNA imagen</strong> de cada lote durante 24 h. 
+          * Para mejorar el servicio se guardará temporalmente una sola imagen de cada lote durante 24 horas. 
           Borrado automático. Sin datos personales.{' '}
           <Link 
             href="/privacy" 
