@@ -64,10 +64,10 @@ export function ResizeExportPanel({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Size Presets */}
       <div>
-        <Label className="text-sm font-medium text-text-primary mb-3 block">
+        <Label className="text-sm font-medium text-text-primary mb-2 block">
           Presets de Tamaño
         </Label>
         <div className="grid grid-cols-2 gap-2">
@@ -84,7 +84,7 @@ export function ResizeExportPanel({
                   : ''
               }`}
             >
-              <Image className="h-3 w-3 mr-2" />
+              <Image className="h-3 w-3 mr-1" />
               {preset.label}
             </Button>
           ))}
@@ -93,10 +93,10 @@ export function ResizeExportPanel({
 
       {/* Custom Dimensions */}
       <div>
-        <Label className="text-sm font-medium text-text-primary mb-3 block">
+        <Label className="text-sm font-medium text-text-primary mb-2 block">
           Dimensiones Personalizadas
         </Label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <div>
             <Label htmlFor="resize-width" className="text-xs text-text-muted">
               Ancho (px)
@@ -126,14 +126,14 @@ export function ResizeExportPanel({
             />
           </div>
         </div>
-        <p className="text-xs text-text-muted mt-2">
-          Deja en 0 para mantener el tamaño original
+        <p className="text-xs text-text-muted mt-1">
+          Deja en 0 para tamaño original
         </p>
       </div>
 
       {/* Format Selection */}
       <div>
-        <Label className="text-sm font-medium text-text-primary mb-3 block">
+        <Label className="text-sm font-medium text-text-primary mb-2 block">
           Formato de Exportación
         </Label>
         <Select
@@ -156,7 +156,7 @@ export function ResizeExportPanel({
       {/* Quality Slider (only for JPEG) */}
       {format === 'jpeg' && (
         <div>
-          <Label className="text-sm font-medium text-text-primary mb-3 block">
+          <Label className="text-sm font-medium text-text-primary mb-2 block">
             Calidad JPEG: {quality}%
           </Label>
           <Slider
@@ -166,7 +166,7 @@ export function ResizeExportPanel({
             max={100}
             step={1}
             disabled={disabled}
-            className="mb-2"
+            className="mb-1"
           />
           <div className="flex justify-between text-xs text-text-muted">
             <span>Menor tamaño</span>
@@ -177,7 +177,7 @@ export function ResizeExportPanel({
 
       {/* Project Name */}
       <div>
-        <Label htmlFor="project-name" className="text-sm font-medium text-text-primary mb-3 block">
+        <Label htmlFor="project-name" className="text-sm font-medium text-text-primary mb-2 block">
           Nombre del Proyecto
         </Label>
         <Input
@@ -188,8 +188,8 @@ export function ResizeExportPanel({
           disabled={disabled}
           placeholder="mi-proyecto"
         />
-        <p className="text-xs text-text-muted mt-2">
-          Se usará para nombrar la carpeta del ZIP descargado
+        <p className="text-xs text-text-muted mt-1">
+          Para nombrar la carpeta del ZIP
         </p>
       </div>
     </div>

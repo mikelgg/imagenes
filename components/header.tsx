@@ -25,7 +25,7 @@ export function Header({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28 }}
     >
-      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-3">
         <div className="flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">

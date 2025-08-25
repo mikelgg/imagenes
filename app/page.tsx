@@ -258,14 +258,14 @@ export default function HomePage() {
 
   // Upload Panel
   const uploadPanel = selectedFiles.length === 0 ? (
-    <div className="text-center space-y-6 py-8">
+    <div className="text-center space-y-4 py-6">
       <motion.div 
         className="space-y-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <div className="space-y-4">
+        <div className="space-y-3">
           <motion.div
             animate={{ 
               rotate: [0, 5, -5, 0],
@@ -277,24 +277,24 @@ export default function HomePage() {
               ease: "easeInOut" 
             }}
           >
-            <Camera className="h-16 w-16 text-primary mx-auto" />
+            <Camera className="h-12 w-12 text-primary mx-auto" />
           </motion.div>
           <div>
-            <h1 className="text-4xl font-bold tracking-tighter text-text-primary mb-2">
+            <h1 className="text-3xl font-bold tracking-tighter text-text-primary mb-1">
               Image Processor
             </h1>
-            <h2 className="text-xl font-semibold text-primary tracking-tight">
+            <h2 className="text-lg font-semibold text-primary tracking-tight">
               Geometric Crop Engine
             </h2>
           </div>
         </div>
         
-        <p className="text-text-muted text-lg max-w-md mx-auto leading-relaxed">
-          Procesamiento avanzado con algoritmo geométrico determinista. 
+        <p className="text-text-muted text-base max-w-md mx-auto leading-relaxed">
+          Algoritmo geométrico determinista. 
           <span className="text-primary font-medium">Cero bordes garantizado</span>.
         </p>
         
-        <div className="grid grid-cols-3 gap-4 max-w-sm mx-auto">
+        <div className="grid grid-cols-3 gap-3 max-w-sm mx-auto">
           {[
             { icon: Cpu, label: 'Geometric\nAlgorithm' },
             { icon: Zap, label: 'Web Worker\nPerformance' },
@@ -302,12 +302,12 @@ export default function HomePage() {
           ].map((feature, i) => (
             <motion.div 
               key={i}
-              className="text-center p-3 rounded-xl bg-surface/50 border border-border"
+              className="text-center p-2 rounded-lg bg-surface/50 border border-border"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 + i * 0.1, duration: 0.3 }}
             >
-              <feature.icon className="h-6 w-6 text-primary mx-auto mb-2" />
+              <feature.icon className="h-5 w-5 text-primary mx-auto mb-1" />
               <p className="text-xs text-text-muted whitespace-pre-line">
                 {feature.label}
               </p>

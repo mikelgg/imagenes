@@ -40,19 +40,18 @@ export function ControlsToolbar({
 }: ControlsToolbarProps) {
   return (
     <motion.div
-      className="space-y-4"
+      className="space-y-3"
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="space-y-3">
         {/* Rotate Panel - Always Open */}
         <Accordion
           title="Rotar"
           icon={<RotateCw className="h-4 w-4" />}
           defaultOpen={true}
           disabled={true} // Cannot be collapsed
-          className="lg:col-span-1"
         >
           <RotatePanel
             rotation={options.rotation}
@@ -67,7 +66,6 @@ export function ControlsToolbar({
           title="Cortar"
           icon={<Scissors className="h-4 w-4" />}
           defaultOpen={false}
-          className="lg:col-span-1"
         >
           <CropPanel
             cropX={options.cropX}
@@ -84,7 +82,6 @@ export function ControlsToolbar({
           title="Redimensionar & Exportar"
           icon={<Download className="h-4 w-4" />}
           defaultOpen={false}
-          className="lg:col-span-1"
         >
           <ResizeExportPanel
             resizeWidth={options.resizeWidth}
@@ -102,15 +99,19 @@ export function ControlsToolbar({
       {/* EXIF Notice */}
       {showExifNotice && (
         <motion.div
-          className="flex items-center gap-2 p-3 rounded-lg bg-muted/20 border border-border/50"
+          className="flex items-center gap-2 p-2 rounded-lg bg-muted/20 border border-border/50"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
         >
-          <Info className="h-4 w-4 text-primary flex-shrink-0" />
+          <div 
+            className="cursor-help" 
+            title="Se hace para proteger tu privacidad y evitar coincidencias exactas con la imagen original."
+          >
+            <Info className="h-4 w-4 text-primary flex-shrink-0" />
+          </div>
           <p className="text-xs text-text-muted">
-            <strong>Privacidad:</strong> Los metadatos EXIF serán eliminados automáticamente 
-            para proteger tu privacidad y evitar coincidencias exactas con la imagen original.
+            <strong>Metadatos EXIF serán eliminados automáticamente.</strong>
           </p>
         </motion.div>
       )}

@@ -30,10 +30,10 @@ export function RotatePanel({ rotation, useGeometricCrop, onChange, disabled }: 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Quick Rotation Buttons */}
       <div>
-        <Label className="text-sm font-medium text-text-primary mb-3 block">
+        <Label className="text-sm font-medium text-text-primary mb-2 block">
           Rotación Rápida
         </Label>
         <div className="grid grid-cols-3 gap-2">
@@ -44,7 +44,7 @@ export function RotatePanel({ rotation, useGeometricCrop, onChange, disabled }: 
             disabled={disabled}
             className="flex-1"
           >
-            <RotateCcw className="h-4 w-4 mr-2" />
+            <RotateCcw className="h-4 w-4 mr-1" />
             90° ←
           </Button>
           <Button
@@ -54,7 +54,7 @@ export function RotatePanel({ rotation, useGeometricCrop, onChange, disabled }: 
             disabled={disabled}
             className="flex-1"
           >
-            <Rotate3D className="h-4 w-4 mr-2" />
+            <Rotate3D className="h-4 w-4 mr-1" />
             180°
           </Button>
           <Button
@@ -64,7 +64,7 @@ export function RotatePanel({ rotation, useGeometricCrop, onChange, disabled }: 
             disabled={disabled}
             className="flex-1"
           >
-            <RotateCw className="h-4 w-4 mr-2" />
+            <RotateCw className="h-4 w-4 mr-1" />
             90° →
           </Button>
         </div>
@@ -72,8 +72,8 @@ export function RotatePanel({ rotation, useGeometricCrop, onChange, disabled }: 
 
       {/* Rotation Slider */}
       <div>
-        <Label className="text-sm font-medium text-text-primary mb-3 block">
-          Ángulo Personalizado: {rotation.toFixed(1)}°
+        <Label className="text-sm font-medium text-text-primary mb-2 block">
+          Ángulo: {rotation.toFixed(1)}°
         </Label>
         <Slider
           value={[rotation]}
@@ -82,7 +82,7 @@ export function RotatePanel({ rotation, useGeometricCrop, onChange, disabled }: 
           max={180}
           step={0.1}
           disabled={disabled}
-          className="mb-3"
+          className="mb-2"
         />
         <div className="flex items-center gap-2">
           <Input
@@ -90,87 +90,60 @@ export function RotatePanel({ rotation, useGeometricCrop, onChange, disabled }: 
             value={rotation}
             onChange={handleInputChange}
             disabled={disabled}
-            className="flex-1 text-center"
+            className="w-20 text-center"
             step="0.1"
             min="-180"
             max="180"
           />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleQuickRotate(-1)}
-            disabled={disabled}
-          >
-            <Minus className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleQuickRotate(1)}
-            disabled={disabled}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Fine Adjustments */}
-      <div>
-        <Label className="text-sm font-medium text-text-primary mb-3 block">
-          Ajustes Finos
-        </Label>
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleQuickRotate(-5)}
-            disabled={disabled}
-            className="flex-1"
-          >
-            <Minus className="h-3 w-3 mr-1" />
-            5°
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleQuickRotate(-1)}
-            disabled={disabled}
-            className="flex-1"
-          >
-            <Minus className="h-3 w-3 mr-1" />
-            1°
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleQuickRotate(1)}
-            disabled={disabled}
-            className="flex-1"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            1°
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleQuickRotate(5)}
-            disabled={disabled}
-            className="flex-1"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            5°
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleQuickRotate(-5)}
+              disabled={disabled}
+              className="px-2"
+            >
+              -5°
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleQuickRotate(-1)}
+              disabled={disabled}
+              className="px-2"
+            >
+              -1°
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleQuickRotate(1)}
+              disabled={disabled}
+              className="px-2"
+            >
+              +1°
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleQuickRotate(5)}
+              disabled={disabled}
+              className="px-2"
+            >
+              +5°
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Auto-crop Toggle */}
-      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+      <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
         <div>
           <Label htmlFor="auto-crop" className="text-sm font-medium text-text-primary">
             Auto-crop tras rotar
           </Label>
-          <p className="text-xs text-text-muted mt-1">
-            Elimina bordes automáticamente después de la rotación
+          <p className="text-xs text-text-muted">
+            Elimina bordes automáticamente
           </p>
         </div>
         <Switch

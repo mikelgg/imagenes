@@ -38,20 +38,20 @@ export function CropPanel({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-muted/20 p-3 rounded-lg">
+    <div className="space-y-4">
+      <div className="bg-muted/20 p-2 rounded-lg">
         <p className="text-xs text-text-muted">
           <Scissors className="h-3 w-3 inline mr-1" />
-          Deja los campos vacíos (0) para usar auto-crop geométrico
+          Deja los campos vacíos (0) para auto-crop geométrico
         </p>
       </div>
 
       {/* Crop Position */}
       <div>
-        <Label className="text-sm font-medium text-text-primary mb-3 block">
+        <Label className="text-sm font-medium text-text-primary mb-2 block">
           Posición (píxeles)
         </Label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <div>
             <Label htmlFor="crop-x" className="text-xs text-text-muted">
               X (izquierda)
@@ -85,10 +85,10 @@ export function CropPanel({
 
       {/* Crop Dimensions */}
       <div>
-        <Label className="text-sm font-medium text-text-primary mb-3 block">
+        <Label className="text-sm font-medium text-text-primary mb-2 block">
           Dimensiones (píxeles)
         </Label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <div>
             <Label htmlFor="crop-width" className="text-xs text-text-muted">
               Ancho
@@ -125,6 +125,7 @@ export function CropPanel({
         variant="secondary"
         onClick={handleReset}
         disabled={disabled}
+        size="sm"
         className="w-full"
       >
         <RotateCcw className="h-4 w-4 mr-2" />
