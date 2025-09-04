@@ -75,7 +75,27 @@ export function Footer() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.8 }}
         >
-          <p>&copy; 2024 Image Batch Processor. Geometric Crop Engine.</p>
+          <p className="mb-2">&copy; 2024 Image Batch Processor. Geometric Crop Engine.</p>
+          <p className="text-xs">
+            En colaboración con{' '}
+            <a 
+              href="https://receipts4low.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"
+            >
+              Receipts4low
+            </a>
+            {' '}· Creado por{' '}
+            <a 
+              href="https://github.com/laaagoo" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"
+            >
+              @laaagoo
+            </a>
+          </p>
         </motion.div>
       </div>
     </motion.footer>

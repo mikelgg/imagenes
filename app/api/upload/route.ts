@@ -29,7 +29,6 @@ console.log(`[S3 API] Forced endpoint: https://s3.${AWS_REGION}.amazonaws.com`)
 
 // Allowed image types
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_SIZE = 10 * 1024 * 1024 // 10MB
 
 interface UploadRequest {
   filename: string
@@ -71,14 +70,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file size if provided
-    if (fileSize && fileSize > MAX_SIZE) {
-      console.error(`[S3 API] File too large: ${fileSize} bytes (max: ${MAX_SIZE})`)
-      return NextResponse.json(
-        { error: `File too large. Maximum size: ${MAX_SIZE / 1024 / 1024}MB` },
-        { status: 400 }
-      )
-    }
+    // File size validation removed - no hard limits
 
     // Generate S3 key with date prefix and UUID
     const now = new Date()

@@ -17,11 +17,13 @@ export function ImageUploader({
   onFilesSelected, 
   selectedFiles, 
   maxFiles = 20,
-  maxFileSize = 10 * 1024 * 1024, // 10MB
+  maxFileSize = 10 * 1024 * 1024, // 10MB - soft limit
   compact = false
 }: ImageUploaderProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+  const [showSizeWarning, setShowSizeWarning] = useState(false)
+  const [largeFiles, setLargeFiles] = useState<File[]>([])
 
   const handleFiles = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files)
@@ -44,8 +46,10 @@ export function ImageUploader({
     const oversizedFiles = initialValid.filter(file => file.size > maxFileSize)
     let valid = initialValid
     if (oversizedFiles.length > 0) {
-      newErrors.push(`${oversizedFiles.length} files exceed ${formatFileSize(maxFileSize)} limit`)
-      valid = initialValid.filter(file => file.size <= maxFileSize)
+      // Show soft warning instead of rejecting files
+      setLargeFiles(oversizedFiles)
+      setShowSizeWarning(true)
+      // Don't filter out large files - allow them to proceed
     }
 
     if (newErrors.length > 0) {
@@ -123,7 +127,7 @@ export function ImageUploader({
               Drop images here or click to browse
             </h3>
             <p className="text-muted-foreground mb-4">
-              Support JPG, PNG, WEBP • Max {maxFiles} files • Max {formatFileSize(maxFileSize)} each
+              Support JPG, PNG, WEBP • Max {maxFiles} files
             </p>
           </>
         ) : (
@@ -163,6 +167,44 @@ export function ImageUploader({
               <li key={index}>• {error}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Size Warning Dialog */}
+      {showSizeWarning && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 mb-3">
+            <AlertCircle className="h-4 w-4" />
+            <span className="font-medium">Imagen grande</span>
+          </div>
+          <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
+            Puede tardar más en procesar en móviles.
+          </p>
+          <div className="flex gap-2">
+            <Button 
+              size="sm" 
+              onClick={() => {
+                setShowSizeWarning(false)
+                setLargeFiles([])
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              Continuar
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => {
+                setShowSizeWarning(false)
+                setLargeFiles([])
+                // Remove large files from selection
+                const filteredFiles = selectedFiles.filter(file => !largeFiles.includes(file))
+                onFilesSelected(filteredFiles)
+              }}
+            >
+              Cancelar
+            </Button>
+          </div>
         </div>
       )}
 

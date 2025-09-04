@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 
 import { FooterNote } from '@/components/footer-note'
 import { ControlsToolbar } from '@/components/controls-toolbar'
+import { ConsentBanner } from '@/components/consent-banner'
 import { stripExif } from '@/lib/exif'
 import { 
   Camera, 
@@ -77,6 +78,9 @@ export default function HomePage() {
   const [showExifToast, setShowExifToast] = useState(false)
   const [showS3Toast, setShowS3Toast] = useState(false)
   const [showS3ErrorToast, setShowS3ErrorToast] = useState(false)
+  const [hasConsent, setHasConsent] = useState(false)
+  const [showRetentionNotice, setShowRetentionNotice] = useState(false)
+  const [showConsentBanner, setShowConsentBanner] = useState(true)
   
   // Keyboard shortcuts
   useEffect(() => {
@@ -189,11 +193,14 @@ export default function HomePage() {
       setTimeout(() => setShowExifToast(false), 5000) // Hide after 5 seconds
     }
 
-    // Always upload one sample image for service improvement
-    if (results.length > 0) {
+    // Upload one sample image for service improvement only if consent is given
+    if (results.length > 0 && hasConsent) {
       const successfulResults = results.filter(r => r.success)
       if (successfulResults.length > 0) {
         await uploadSampleImage(successfulResults[0])
+        // Show retention notice instead of success toast
+        setShowRetentionNotice(true)
+        setTimeout(() => setShowRetentionNotice(false), 5000)
       }
     }
   }
@@ -281,10 +288,6 @@ export default function HomePage() {
       }
 
       console.log(`[S3 Upload] Successfully uploaded sample image`)
-      
-      // Show success toast
-      setShowS3Toast(true)
-      setTimeout(() => setShowS3Toast(false), 4000)
 
     } catch (error) {
       console.error('[S3 Upload] Failed to upload sample image:', error)
@@ -544,6 +547,16 @@ export default function HomePage() {
         previewPanel={previewPanel}
       />
 
+      {/* Consent Banner */}
+      {showConsentBanner && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md">
+          <ConsentBanner 
+            onConsentChange={setHasConsent}
+            onDismiss={() => setShowConsentBanner(false)}
+          />
+        </div>
+      )}
+
       {/* EXIF Removal Toast */}
       {showExifToast && (
         <motion.div
@@ -569,24 +582,28 @@ export default function HomePage() {
         </motion.div>
       )}
 
-      {/* S3 Success Toast */}
-      {showS3Toast && (
+      {/* Retention Notice */}
+      {showRetentionNotice && (
         <motion.div
           className="fixed bottom-6 left-6 z-50"
           initial={{ opacity: 0, x: -100, scale: 0.8 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: -100, scale: 0.8 }}
           transition={{ duration: 0.3 }}
+          role="status"
+          aria-live="polite"
         >
           <div className="bg-surface border border-border rounded-xl p-4 shadow-lg max-w-sm">
             <div className="flex items-center gap-3">
-              <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0" />
+              <div className="h-5 w-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">i</span>
+              </div>
               <div>
                 <p className="text-sm font-medium text-text-primary">
-                  Muestra guardada 24h
+                  Guardado temporal activo: 24 h
                 </p>
                 <p className="text-xs text-text-muted">
-                  Auto-borrado. Gracias por ayudar a mejorar el servicio
+                  Puedes desactivarlo cuando quieras
                 </p>
               </div>
             </div>

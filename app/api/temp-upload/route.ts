@@ -13,7 +13,6 @@ const s3Client = new S3Client({
 })
 
 const BUCKET_NAME = process.env.S3_BUCKET!
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,13 +43,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file size
-    if (image.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.` },
-        { status: 400 }
-      )
-    }
+    // File size validation removed - no hard limits
 
     // Generate S3 key with date structure for easy lifecycle management
     const date = new Date(createdAt)

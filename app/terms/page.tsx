@@ -74,9 +74,9 @@ export default function TermsPage() {
           </p>
           <ul className="list-disc list-inside space-y-2 ml-4">
             <li>Maximum 20 images per batch</li>
-            <li>Maximum 10MB per image file</li>
             <li>Supported formats: JPEG, PNG, WebP</li>
             <li>Processing occurs on client device capabilities</li>
+            <li>Large images may take longer to process on mobile devices</li>
           </ul>
         </section>
 

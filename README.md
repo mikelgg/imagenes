@@ -490,12 +490,12 @@ CMD ["npm", "start"]
 
 ## 🔧 Personalización
 
-### Límites de Archivos
+### Límites de Archivos (Soft Limits)
 
 ```typescript
 // En components/image-uploader.tsx
 const MAX_FILES = 20
-const MAX_FILE_SIZE = 10 * 1024 * 1024  // 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024  // 10MB - soft limit (warning only)
 ```
 
 ### Formatos Soportados
