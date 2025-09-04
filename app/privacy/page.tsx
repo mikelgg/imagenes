@@ -44,34 +44,34 @@ export default function PrivacyPage() {
             during the processing workflow.
           </p>
           
-          <h3 className="text-xl font-medium">1.2 No Default Data Collection</h3>
+          <h3 className="text-xl font-medium">1.2 Minimal Data Collection</h3>
           <p>
-            Unless you explicitly provide consent, we do not collect, store, or have access to:
+            We automatically collect minimal data for service improvement:
           </p>
           <ul className="list-disc list-inside space-y-1 ml-4">
-            <li>Your images or image content</li>
-            <li>Personal identifying information</li>
-            <li>IP addresses</li>
-            <li>Device information beyond basic web analytics</li>
+            <li>One sample image per batch (automatically deleted after 24h)</li>
+            <li>No personal identifying information</li>
+            <li>No IP addresses stored</li>
+            <li>No device information beyond basic web analytics</li>
           </ul>
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-semibold">2. Optional Temporary Storage</h2>
+          <h2 className="text-2xl font-semibold">2. Automatic Temporary Storage</h2>
           
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
             <h3 className="font-medium flex items-center gap-2 mb-2">
               <Clock className="h-4 w-4" />
-              Consent-Based Temporary Storage
+              Automatic Temporary Storage
             </h3>
             <p className="text-sm">
-              With your explicit, opt-in consent, we may temporarily store one sample image 
-              from your processing batch for exactly 24 hours.
+              One sample image from each processing batch is automatically stored temporarily 
+              for exactly 24 hours for service improvement purposes.
             </p>
           </div>
 
           <h3 className="text-xl font-medium">2.1 Purpose of Temporary Storage</h3>
-          <p>When you provide consent, temporary storage is used exclusively for:</p>
+          <p>Temporary storage is used exclusively for:</p>
           <ul className="list-disc list-inside space-y-1 ml-4">
             <li><strong>Service Quality:</strong> Identifying and fixing processing issues</li>
             <li><strong>Security:</strong> Monitoring for abuse or misuse of the service</li>
@@ -79,7 +79,7 @@ export default function PrivacyPage() {
           </ul>
 
           <h3 className="text-xl font-medium">2.2 What We Store</h3>
-          <p>If you consent, we temporarily store:</p>
+          <p>We automatically store:</p>
           <ul className="list-disc list-inside space-y-1 ml-4">
             <li>One processed image from your batch (typically the first successful result)</li>
             <li>A randomly generated batch ID (no personal information)</li>
@@ -123,11 +123,11 @@ export default function PrivacyPage() {
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold">4. Your Rights and Choices</h2>
           
-          <h3 className="text-xl font-medium">4.1 Consent Management</h3>
+          <h3 className="text-xl font-medium">4.1 Automatic Storage</h3>
           <ul className="list-disc list-inside space-y-1 ml-4">
-            <li>Consent is always opt-in and clearly requested</li>
-            <li>The service works fully without providing consent</li>
-            <li>You can change your consent choice for each processing batch</li>
+            <li>Storage is automatic and transparent</li>
+            <li>No user action required for service improvement</li>
+            <li>All data is automatically deleted within 24 hours</li>
           </ul>
 
           <h3 className="text-xl font-medium">4.2 Data Access</h3>
@@ -150,9 +150,9 @@ export default function PrivacyPage() {
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold">6. Third-Party Services</h2>
           <p>
-            We use secure cloud storage services (AWS S3 or compatible) for temporary storage 
-            when consent is provided. These services are configured with automatic deletion 
-            and do not have access to any personal information.
+            We use secure cloud storage services (AWS S3 or compatible) for automatic temporary 
+            storage. These services are configured with automatic deletion and do not have 
+            access to any personal information.
           </p>
         </section>
 

@@ -34,17 +34,17 @@ export default function TermsPage() {
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold">2. Privacy-First Processing</h2>
           <p>
-            By default, all image processing occurs entirely in your web browser. Your images 
-            are not uploaded to our servers unless you explicitly provide consent for temporary 
-            storage as described in our Privacy Policy.
+            All image processing occurs entirely in your web browser. One sample image per batch 
+            is automatically stored temporarily for 24 hours for service improvement purposes, 
+            as described in our Privacy Policy.
           </p>
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-semibold">3. Optional Data Collection</h2>
+          <h2 className="text-2xl font-semibold">3. Automatic Data Collection</h2>
           <p>
-            With your explicit consent, we may temporarily store one sample image from your 
-            processing batch for up to 24 hours. This data is used solely for:
+            One sample image from each processing batch is automatically stored temporarily for 
+            up to 24 hours. This data is used solely for:
           </p>
           <ul className="list-disc list-inside space-y-2 ml-4">
             <li>Service quality improvement</li>
@@ -52,7 +52,7 @@ export default function TermsPage() {
             <li>Technical issue diagnosis</li>
           </ul>
           <p>
-            This storage is completely optional and the service functions fully without consent.
+            This storage is automatic and helps improve the service for all users.
           </p>
         </section>
 

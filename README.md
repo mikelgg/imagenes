@@ -11,7 +11,7 @@ Procesa hasta 20 imágenes con rotación automática, recorte inteligente y redi
 ### 🔒 **Privacidad Total**
 - 🔥 **Procesamiento 100% local** en tu navegador
 - 🚫 **Cero uploads** por defecto - tus imágenes nunca salen de tu dispositivo
-- ✅ **Almacenamiento temporal opcional** (solo 1 muestra, 24h) con consentimiento explícito
+- ✅ **Almacenamiento temporal automático** (solo 1 muestra, 24h) por motivos de privacidad
 - 🛡️ **Cumple GDPR/CCPA** - transparencia total
 
 ### 🎨 **Procesamiento iPhone-Style**
@@ -281,7 +281,6 @@ Next.js 14 + TypeScript + Tailwind CSS
 │   ├── ui/               # shadcn/ui base
 │   ├── image-uploader.tsx # Drag & drop
 │   ├── processing-options.tsx
-│   └── consent-banner.tsx # Banner privacidad
 └── workers/              # Web Workers
     └── image-processor.worker.ts # Procesamiento
 ```
@@ -370,20 +369,15 @@ const options = {
 
 ## 🔒 Privacidad y Transparencia
 
-### Por Defecto (Sin Consentimiento)
-- ✅ **Todo local** - procesamiento 100% en el navegador
-- ✅ **Cero network** - ni una imagen sale de tu dispositivo  
-- ✅ **Sin cookies** de tracking
-- ✅ **Sin logs** de actividad
-
-### Con Consentimiento Explícito
-- 📤 **Solo 1 imagen** por lote (muestra) se sube temporalmente
+### Almacenamiento Automático
+- 📤 **Solo 1 imagen** por lote (muestra) se sube automáticamente
 - ⏰ **24 horas máximo** de retención automática
 - 🗑️ **Auto-eliminación** garantizada vía S3 Lifecycle
 - 🔐 **Cero datos personales** - solo imagen + timestamp + batchId
+- 🛡️ **Por motivos de privacidad** - mejora del servicio
 
 ### Cumplimiento Legal
-- **GDPR**: Consentimiento explícito + eliminación automática + transparencia
+- **GDPR**: Transparencia total + eliminación automática + aviso claro
 - **CCPA**: Sin venta de datos + control total del usuario
 - **Páginas legales**: Terms & Privacy integradas
 
@@ -539,7 +533,7 @@ npm test -- --coverage
 - ✅ Lotes procesados exitosamente
 - ⚡ Tiempo promedio de procesamiento  
 - 📊 Distribución de formatos de salida
-- 🔒 Tasa de consentimiento para almacenamiento temporal
+- 🔒 Almacenamiento automático para mejora del servicio
 
 ### Logs en Vercel
 ```bash
